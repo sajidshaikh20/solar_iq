@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "1073201905779",
+    "firebase_url": "https://relay-control-25bbe-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "relay-control-25bbe",
+    "storage_bucket": "relay-control-25bbe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1073201905779:android:93eaf8050875dae55aea06",
+        "android_client_info": {
+          "package_name": "com.solar_iq_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCGXjutsrgQvmYcYUhebCq_IO92XYCYGBk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
