@@ -9,6 +9,7 @@ import 'monitoring_screen.dart';
 import 'roi_screen.dart';
 import 'cleaning_screen.dart';
 import 'installation_screen.dart';
+import 'electricity_bill_calculator_screen.dart';
 import '../services/firebase_service.dart';
 import '../models/energy_data.dart';
 
@@ -319,6 +320,15 @@ class HomePageContent extends StatelessWidget {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => const InstallationScreen()),
+      ),
+    ),
+    _MenuItem(
+      icon: Icons.electric_meter_outlined,
+      title: 'Electricity Bill\nCalculator',
+      color: const Color(0xFFF9A825),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const ElectricityBillCalculatorScreen()),
       ),
     ),
   ];
