@@ -17,7 +17,7 @@ class _RoiScreenState extends State<RoiScreen> {
   final _investmentController = TextEditingController();
   final _dealRateController = TextEditingController();
   final _monthlyUnitsController = TextEditingController();
-  final _unitRateController = TextEditingController();
+  final _unitRateController = TextEditingController(text: '8.00');
   final _fbService = FirebaseService();
   bool _isSaving = false;
 
@@ -25,6 +25,25 @@ class _RoiScreenState extends State<RoiScreen> {
   double? _remainingRecovery;
   double? _roiMonths;
   int? _paybackYear;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentTariff();
+  }
+
+  Future<void> _loadCurrentTariff() async {
+    try {
+      final rate = await _fbService.getElectricityRateStream().first;
+      if (mounted) {
+        setState(() {
+          _unitRateController.text = rate.toStringAsFixed(2);
+        });
+      }
+    } catch (e) {
+      // Fallback already set as default text
+    }
+  }
 
   @override
   void dispose() {

@@ -409,4 +409,35 @@ class FirebaseService {
       .child(AppConstants.outputsPath)
       .child(AppConstants.digitalPath)
       .child(pin.toString());
+
+  // --- Settings ---
+
+  Stream<double> getElectricityRateStream() {
+    final uid = currentUid ?? 'anonymous';
+    return _dbRef
+        .child('settings')
+        .child(uid)
+        .child('electricity_rate')
+        .onValue
+        .map((event) {
+      final val = event.snapshot.value;
+      if (val == null) return 8.0;
+      if (val is num) return val.toDouble();
+      return double.tryParse(val.toString()) ?? 8.0;
+    });
+  }
+
+  Future<ApiResponse<void>> saveElectricityRate(double rate) async {
+    final uid = currentUid ?? 'anonymous';
+    try {
+      await _dbRef
+          .child('settings')
+          .child(uid)
+          .child('electricity_rate')
+          .set(rate);
+      return ApiResponse.success(null);
+    } catch (e) {
+      return ApiResponse.error(e.toString());
+    }
+  }
 }

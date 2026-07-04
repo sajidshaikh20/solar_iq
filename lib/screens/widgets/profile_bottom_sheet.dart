@@ -9,6 +9,7 @@ import '../../common_widgets/common_text.dart';
 import '../../common_widgets/common_button.dart';
 import '../../common_widgets/common_textfield.dart';
 import '../../services/auth_service.dart';
+import '../../services/firebase_service.dart';
 import '../login_screen.dart';
 import '../../models/user_model.dart';
 
@@ -456,6 +457,11 @@ class _ProfileBottomSheetState extends State<ProfileBottomSheet> {
         AppColors.primaryMint,
       ),
       _SettingItem(
+        Icons.currency_rupee_rounded,
+        'Electricity Tariff Rate',
+        const Color(0xFFE65100),
+      ),
+      _SettingItem(
         Icons.lock_outline_rounded,
         AppStrings.securitySettings,
         AppColors.primaryEmerald,
@@ -498,7 +504,148 @@ class _ProfileBottomSheetState extends State<ProfileBottomSheet> {
     );
   }
 
+  void _showTariffDialog(double currentRate) {
+    final controller = TextEditingController(text: currentRate.toString());
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTheme.radiusXLarge),
+          ),
+          title: Text(
+            'Update Tariff Rate',
+            style: AppTextStyles.headingSmall.copyWith(color: AppColors.textPrimary),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CommonText(
+                'Enter the cost per solar unit (kWh) to calculate savings dynamically:',
+                variant: TextVariant.bodyMedium,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(height: 16),
+              CommonTextField(
+                label: 'Tariff Rate (₹)',
+                hint: 'e.g. 8.00',
+                controller: controller,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                prefixIcon: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                  child: Text(
+                    '₹',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                AppStrings.cancel,
+                style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final rate = double.tryParse(controller.text);
+                if (rate == null || rate <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter a valid positive number')),
+                  );
+                  return;
+                }
+                final result = await FirebaseService().saveElectricityRate(rate);
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  if (result.success) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Tariff rate updated to ₹${rate.toStringAsFixed(2)}!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Error: ${result.error}'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryEmerald,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+                ),
+              ),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildSettingTile(_SettingItem item) {
+    if (item.label == 'Electricity Tariff Rate') {
+      return StreamBuilder<double>(
+        stream: FirebaseService().getElectricityRateStream(),
+        builder: (context, snapshot) {
+          final rate = snapshot.data ?? 8.0;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _showTariffDialog(rate),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      color: item.color.withOpacity(0.12),
+                    ),
+                    child: Icon(item.icon, color: item.color, size: 18),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CommonText(item.label, variant: TextVariant.labelLarge),
+                        const SizedBox(height: 2),
+                        CommonText('₹${rate.toStringAsFixed(2)} / kWh', variant: TextVariant.caption, color: AppColors.textTertiary),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.edit_rounded,
+                    color: AppColors.primaryEmerald.withOpacity(0.7),
+                    size: 18,
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
