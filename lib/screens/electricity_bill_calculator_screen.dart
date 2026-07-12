@@ -84,6 +84,7 @@ class _ElectricityBillCalculatorScreenState
       _totalBill = null;
       _dbRetrievalSummary = null;
       if (!fetchFromDb) {
+        _previousReadingController.clear();
         _currentReadingController.clear();
       } else {
         _calculateFromDatabase();
