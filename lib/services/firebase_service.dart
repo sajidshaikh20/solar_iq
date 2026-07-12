@@ -10,6 +10,9 @@ import '../models/notification_model.dart';
 import '../constants.dart';
 
 class FirebaseService {
+  static final FirebaseService _instance = FirebaseService._internal();
+  factory FirebaseService() => _instance;
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final DatabaseReference _rootRef = FirebaseDatabase.instanceFor(
     app: FirebaseDatabase.instance.app,
@@ -19,6 +22,25 @@ class FirebaseService {
   DatabaseReference get _dbRef => _rootRef.child('solar_app');
 
   String? get currentUid => _auth.currentUser?.uid;
+
+  FirebaseService._internal() {
+    _initEnergySync();
+  }
+
+  void _initEnergySync() {
+    _rootRef.child('energy').onValue.listen((event) {
+      final data = event.snapshot.value;
+      if (data == null) return;
+      try {
+        final energy = EnergyData.fromMap(Map<dynamic, dynamic>.from(data as Map));
+        if (energy.units > 0) {
+          updateDailyReading(energy.units);
+        }
+      } catch (e) {
+        dev.log('[GEN-FB] Error in energy sync: $e', name: 'FirebaseService');
+      }
+    });
+  }
 
   // --- User Profile ---
 
@@ -290,6 +312,39 @@ class FirebaseService {
     });
   }
 
+  Stream<Map<String, double>> getDailyGenerationStream() {
+    final uid = currentUid ?? 'anonymous';
+    final path = 'solar_app/generation/daily/$uid';
+    dev.log('[GEN-FB] subscribing to daily generation path: $path',
+        name: 'FirebaseService');
+    return _dbRef
+        .child('generation')
+        .child('daily')
+        .child(uid)
+        .onValue
+        .map((event) {
+      final raw = event.snapshot.value;
+      if (raw == null) {
+        return <String, double>{};
+      }
+      if (raw is! Map) {
+        dev.log('[GEN-FB] WARNING: daily path is not a Map: $raw',
+            name: 'FirebaseService');
+        return <String, double>{};
+      }
+
+      final Map<String, double> result = {};
+      raw.forEach((key, value) {
+        if (value is num) {
+          result[key.toString()] = value.toDouble();
+        } else if (value != null) {
+          result[key.toString()] = double.tryParse(value.toString()) ?? 0.0;
+        }
+      });
+      return result;
+    });
+  }
+
   // --- Real-time Energy Tracking ---
 
   Stream<EnergyData> getEnergyDataStream() {
@@ -298,6 +353,18 @@ class FirebaseService {
       if (data == null) return EnergyData(timestamp: DateTime.now());
       return EnergyData.fromMap(Map<dynamic, dynamic>.from(data as Map));
     });
+  }
+
+  Future<void> updateDailyReading(double units) async {
+    final uid = currentUid;
+    if (uid == null) return;
+    final now = DateTime.now();
+    final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    try {
+      await _dbRef.child('generation').child('daily').child(uid).child(dateStr).set(units);
+    } catch (e) {
+      dev.log('[GEN-FB] Error saving daily reading: $e', name: 'FirebaseService');
+    }
   }
 
   // --- ROI Data ---

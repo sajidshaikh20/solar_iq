@@ -29,6 +29,9 @@ class _GenerationPageContentState extends State<GenerationPageContent>
   late final Stream<EnergyData> _energyStream;
   late final Stream<List<GenerationLogEntry>> _logsStream;
   late final Stream<double> _rateStream;
+  late final Stream<Map<String, double>> _dailyStream;
+
+  DateTimeRange? _customDateRange;
 
   final List<String> _tabs = [
     AppStrings.tabToday,
@@ -42,12 +45,17 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     super.initState();
     _tabController = TabController(length: _tabs.length, vsync: this);
     _tabController.addListener(() => setState(() {}));
-    // Firebase's onValue.map returns a single-subscription stream. Wrap
-    // it as a broadcast stream so both _buildLiveStatus and _buildMainStat
-    // (and the chart) can listen at the same time.
     _energyStream = _fbService.getEnergyDataStream().asBroadcastStream();
     _logsStream = _fbService.getLogsStream(limit: 500).asBroadcastStream();
     _rateStream = _fbService.getElectricityRateStream().asBroadcastStream();
+    _dailyStream = _fbService.getDailyGenerationStream().asBroadcastStream();
+
+    final now = DateTime.now();
+    _customDateRange = DateTimeRange(
+      start: now.subtract(const Duration(days: 6)),
+      end: now,
+    );
+
     dev.log('[GEN-SCREEN] initState: streams initialised',
         name: 'GenerationScreen');
   }
@@ -74,35 +82,49 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                 child: _buildTabBar(),
               ),
               Expanded(
-                child: StreamBuilder<List<GenerationLogEntry>>(
-                  stream: _logsStream,
-                  builder: (context, logsSnapshot) {
-                    final logs = logsSnapshot.data ?? const <GenerationLogEntry>[];
-                    final today = _todayFromLogs(logs);
-                    final yesterday = _yesterdayFromLogs(logs);
-                    final thisMonth = _thisMonthFromLogs(logs);
-                    final lastMonth = _lastMonthFromLogs(logs);
-                    final total = _totalFromLogs(logs);
+                child: StreamBuilder<Map<String, double>>(
+                  stream: _dailyStream,
+                  builder: (context, dailySnapshot) {
+                    final dailyData = dailySnapshot.data ?? const <String, double>{};
 
-                    return SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
-                      child: Column(
-                        children: [
-                          _buildLiveStatus(),
-                          const SizedBox(height: AppSpacing.lg),
-                          _buildMainStat(today, yesterday, thisMonth, total, rate),
-                          const SizedBox(height: AppSpacing.lg),
-                          _buildTrendGraph(logs, rate),
-                          const SizedBox(height: AppSpacing.lg),
-                          _buildMonthlyComparison(thisMonth, lastMonth, rate),
-                          const SizedBox(height: AppSpacing.lg),
-                          _buildEnvironmentalImpact(total),
-                          const SizedBox(height: AppSpacing.lg),
-                          _buildDailySavingsTable(logs, rate),
-                          const SizedBox(height: 120),
-                        ],
-                      ),
+                    final today = _todayFromDaily(dailyData);
+                    final yesterday = _yesterdayFromDaily(dailyData);
+                    final thisMonth = _thisMonthFromDaily(dailyData);
+                    final lastMonth = _lastMonthFromDaily(dailyData);
+                    final total = _totalFromDaily(dailyData);
+                    
+                    final customUnits = _calculateUnitsForPeriod(
+                        _customDateRange!.start,
+                        _customDateRange!.end,
+                        dailyData);
+
+                    return StreamBuilder<List<GenerationLogEntry>>(
+                      stream: _logsStream,
+                      builder: (context, logsSnapshot) {
+                        final logs = logsSnapshot.data ?? const <GenerationLogEntry>[];
+
+                        return SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
+                          child: Column(
+                            children: [
+                              _buildLiveStatus(),
+                              const SizedBox(height: AppSpacing.lg),
+                              _buildCustomDateSelector(),
+                              _buildMainStat(today, yesterday, thisMonth, total, rate, customUnits),
+                              const SizedBox(height: AppSpacing.lg),
+                              _buildTrendGraph(logs, dailyData, rate),
+                              const SizedBox(height: AppSpacing.lg),
+                              _buildMonthlyComparison(thisMonth, lastMonth, rate),
+                              const SizedBox(height: AppSpacing.lg),
+                              _buildEnvironmentalImpact(total),
+                              const SizedBox(height: AppSpacing.lg),
+                              _buildDailySavingsTable(dailyData, rate),
+                              const SizedBox(height: 120),
+                            ],
+                          ),
+                        );
+                      }
                     );
                   }
                 ),
@@ -175,65 +197,151 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     );
   }
 
-  // ---- Totals computed directly from logs (source of truth) ----
-  double _todayFromLogs(List<GenerationLogEntry> logs) {
+  Widget _buildCustomDateSelector() {
+    if (_tabController.index != 3) return const SizedBox.shrink();
+
+    final startStr = _formatDateShort(_customDateRange!.start);
+    final endStr = _formatDateShort(_customDateRange!.end);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
+        border: Border.all(color: AppColors.borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.date_range_rounded, color: AppColors.primaryEmerald, size: 20),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Custom Date Range', style: AppTextStyles.caption.copyWith(color: AppColors.textTertiary)),
+                  const SizedBox(height: 2),
+                  Text('$startStr - $endStr', style: AppTextStyles.labelMedium.copyWith(fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ],
+          ),
+          OutlinedButton.icon(
+            onPressed: _selectCustomDateRange,
+            icon: const Icon(Icons.edit_calendar_rounded, size: 16, color: AppColors.primaryEmerald),
+            label: const Text('Change', style: TextStyle(color: AppColors.primaryEmerald, fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: AppColors.primaryEmerald),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _selectCustomDateRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2025, 1, 1),
+      lastDate: DateTime.now(),
+      initialDateRange: _customDateRange,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.primaryEmerald,
+              onPrimary: Colors.white,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customDateRange = picked;
+      });
+    }
+  }
+
+  // ---- Date helper functions ----
+  String _formatDateKey(DateTime d) {
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
+  double _getReadingOnOrBefore(DateTime target, Map<String, double> dailyData, {int maxDaysBack = 30}) {
+    for (int i = 0; i <= maxDaysBack; i++) {
+      final key = _formatDateKey(target.subtract(Duration(days: i)));
+      if (dailyData.containsKey(key)) {
+        return dailyData[key] ?? 0.0;
+      }
+    }
+    // Fallback: search sorted keys
+    final sortedKeys = dailyData.keys.toList()..sort();
+    final targetStr = _formatDateKey(target);
+    for (int i = sortedKeys.length - 1; i >= 0; i--) {
+      if (sortedKeys[i].compareTo(targetStr) <= 0) {
+        return dailyData[sortedKeys[i]] ?? 0.0;
+      }
+    }
+    return 0.0;
+  }
+
+  double _calculateUnitsForPeriod(DateTime start, DateTime end, Map<String, double> dailyData) {
+    if (dailyData.isEmpty) return 0.0;
+    final double endVal = _getReadingOnOrBefore(end, dailyData);
+    final double startVal = _getReadingOnOrBefore(start.subtract(const Duration(days: 1)), dailyData);
+    final diff = endVal - startVal;
+    return diff > 0 ? diff : 0.0;
+  }
+
+  double _todayFromDaily(Map<String, double> dailyData) {
     final now = DateTime.now();
-    double sum = 0;
-    for (final e in logs) {
-      final t = e.timestamp;
-      if (t.year == now.year && t.month == now.month && t.day == now.day) {
-        sum += e.units;
-      }
-    }
-    return sum;
+    return _calculateUnitsForPeriod(now, now, dailyData);
   }
 
-  double _yesterdayFromLogs(List<GenerationLogEntry> logs) {
-    final y = DateTime.now().subtract(const Duration(days: 1));
-    double sum = 0;
-    for (final e in logs) {
-      final t = e.timestamp;
-      if (t.year == y.year && t.month == y.month && t.day == y.day) {
-        sum += e.units;
-      }
-    }
-    return sum;
+  double _yesterdayFromDaily(Map<String, double> dailyData) {
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    return _calculateUnitsForPeriod(yesterday, yesterday, dailyData);
   }
 
-  double _thisMonthFromLogs(List<GenerationLogEntry> logs) {
+  double _thisMonthFromDaily(Map<String, double> dailyData) {
     final now = DateTime.now();
-    double sum = 0;
-    for (final e in logs) {
-      final t = e.timestamp;
-      if (t.year == now.year && t.month == now.month) {
-        sum += e.units;
-      }
-    }
-    return sum;
+    final start = DateTime(now.year, now.month, 1);
+    return _calculateUnitsForPeriod(start, now, dailyData);
   }
 
-  double _lastMonthFromLogs(List<GenerationLogEntry> logs) {
+  double _lastMonthFromDaily(Map<String, double> dailyData) {
     final now = DateTime.now();
-    final lastMonthDate = DateTime(now.year, now.month - 1);
-    double sum = 0;
-    for (final e in logs) {
-      final t = e.timestamp;
-      if (t.year == lastMonthDate.year && t.month == lastMonthDate.month) {
-        sum += e.units;
-      }
-    }
-    return sum;
+    final start = DateTime(now.year, now.month - 1, 1);
+    final end = DateTime(now.year, now.month, 0); // Last day of last month
+    return _calculateUnitsForPeriod(start, end, dailyData);
   }
 
-  double _totalFromLogs(List<GenerationLogEntry> logs) {
-    double sum = 0;
-    for (final e in logs) {
-      sum += e.units;
-    }
-    return sum;
+  double _totalFromDaily(Map<String, double> dailyData) {
+    if (dailyData.isEmpty) return 0.0;
+    double maxVal = 0.0;
+    dailyData.forEach((key, val) {
+      if (val > maxVal) maxVal = val;
+    });
+    return maxVal;
   }
 
-  Widget _buildMainStat(double today, double yesterday, double thisMonth, double total, double rate) {
+  // ---- Main statistics widget ----
+  Widget _buildMainStat(double today, double yesterday, double thisMonth, double total, double rate, double customUnits) {
     return StreamBuilder<EnergyData>(
       stream: _energyStream,
       builder: (context, energySnapshot) {
@@ -241,7 +349,6 @@ class _GenerationPageContentState extends State<GenerationPageContent>
         final index = _tabController.index;
 
         if (index == 0) {
-          // Today: prefer live board reading, fall back to summed logs.
           if (energySnapshot.hasData &&
               energySnapshot.data!.units > 0) {
             value = energySnapshot.data!.units.toStringAsFixed(2);
@@ -253,7 +360,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
         } else if (index == 2) {
           value = thisMonth.toStringAsFixed(1);
         } else {
-          value = total.toStringAsFixed(1);
+          value = customUnits.toStringAsFixed(1);
         }
 
         final double doubleVal = double.tryParse(value) ?? 0.0;
@@ -296,7 +403,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                                   ? 'kWh Yesterday'
                                   : _tabController.index == 2
                                       ? 'kWh This Month'
-                                      : 'Lifetime kWh',
+                                      : 'kWh Custom Range',
                           variant: TextVariant.caption,
                           color: AppColors.textSecondary.withOpacity(0.7),
                           textAlign: TextAlign.center,
@@ -337,7 +444,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                                   ? "Yesterday's Savings"
                                   : _tabController.index == 2
                                       ? "This Month's Savings"
-                                      : "Lifetime Savings",
+                                      : "Custom Range Savings",
                           variant: TextVariant.caption,
                           color: AppColors.textSecondary.withOpacity(0.7),
                           textAlign: TextAlign.center,
@@ -412,7 +519,6 @@ class _GenerationPageContentState extends State<GenerationPageContent>
   }
 
   // -------- Trend graph (tab-aware) --------
-
   String _graphTitle() {
     switch (_tabController.index) {
       case 0:
@@ -422,25 +528,25 @@ class _GenerationPageContentState extends State<GenerationPageContent>
       case 2:
         return 'This Month (Week-wise)';
       default:
+        if (_customDateRange != null) {
+          return 'Selected Period (Daily)';
+        }
         return 'Last 7 Days';
     }
   }
 
-  /// Build chart data for the currently selected tab.
-  /// Returns a list of (label, value) pairs.
-  List<MapEntry<String, double>> _buildSeries(List<GenerationLogEntry> logs) {
+  List<MapEntry<String, double>> _buildSeries(List<GenerationLogEntry> logs, Map<String, double> dailyData) {
     final now = DateTime.now();
     final index = _tabController.index;
 
     if (index == 0 || index == 1) {
-      // Hourly bars from 6 AM .. 8 PM (15 buckets) for today / yesterday.
       final DateTime targetDay = index == 0
           ? DateTime(now.year, now.month, now.day)
           : DateTime(now.year, now.month, now.day)
               .subtract(const Duration(days: 1));
 
       const int startHour = 6;
-      const int endHour = 20; // inclusive
+      const int endHour = 20;
       final int buckets = endHour - startHour + 1;
       final List<double> hourly = List.filled(buckets, 0.0);
 
@@ -457,7 +563,6 @@ class _GenerationPageContentState extends State<GenerationPageContent>
 
       return List<MapEntry<String, double>>.generate(buckets, (i) {
         final hour = startHour + i;
-        // Show every 3rd hour as a label to keep things readable.
         final label = (i % 3 == 0)
             ? (hour == 12
                 ? '12P'
@@ -470,20 +575,20 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     }
 
     if (index == 2) {
-      // Week-wise totals for the current month (W1..W5).
       final DateTime monthStart = DateTime(now.year, now.month, 1);
       final DateTime nextMonth = DateTime(now.year, now.month + 1, 1);
       final int daysInMonth = nextMonth.difference(monthStart).inDays;
-      // Five weekly buckets: days 1-7, 8-14, 15-21, 22-28, 29-end.
       final int totalWeeks = ((daysInMonth - 1) ~/ 7) + 1;
       final List<double> weekly = List.filled(totalWeeks, 0.0);
 
-      for (final entry in logs) {
-        final t = entry.timestamp;
-        if (t.year == now.year && t.month == now.month) {
-          final int weekIdx = (t.day - 1) ~/ 7;
+      for (int i = 1; i <= daysInMonth; i++) {
+        final targetDate = DateTime(now.year, now.month, i);
+        final dateKey = _formatDateKey(targetDate);
+        if (dailyData.containsKey(dateKey)) {
+          final units = _calculateUnitsForPeriod(targetDate, targetDate, dailyData);
+          final int weekIdx = (i - 1) ~/ 7;
           if (weekIdx >= 0 && weekIdx < totalWeeks) {
-            weekly[weekIdx] += entry.units;
+            weekly[weekIdx] += units;
           }
         }
       }
@@ -492,33 +597,25 @@ class _GenerationPageContentState extends State<GenerationPageContent>
           totalWeeks, (i) => MapEntry('W${i + 1}', weekly[i]));
     }
 
-    // Custom tab: last 7 days, daily totals.
-    final List<double> daily = List.filled(7, 0.0);
-    final List<String> labels = List.filled(7, '');
-    final DateTime today = DateTime(now.year, now.month, now.day);
-    for (int i = 0; i < 7; i++) {
-      final d = today.subtract(Duration(days: 6 - i));
-      labels[i] = '${d.day}/${d.month}';
+    if (_customDateRange == null) return [];
+    final int days = _customDateRange!.end.difference(_customDateRange!.start).inDays + 1;
+    final List<MapEntry<String, double>> series = [];
+
+    for (int i = 0; i < days; i++) {
+      final d = _customDateRange!.start.add(Duration(days: i));
+      final units = _calculateUnitsForPeriod(d, d, dailyData);
+      final label = '${d.day}/${d.month}';
+      series.add(MapEntry(label, units));
     }
-    for (final entry in logs) {
-      final t = entry.timestamp;
-      final entryDay = DateTime(t.year, t.month, t.day);
-      final diff = today.difference(entryDay).inDays;
-      if (diff >= 0 && diff < 7) {
-        daily[6 - diff] += entry.units;
-      }
-    }
-    return List<MapEntry<String, double>>.generate(
-        7, (i) => MapEntry(labels[i], daily[i]));
+    return series;
   }
 
-  Widget _buildTrendGraph(List<GenerationLogEntry> logs, double rate) {
-    final series = _buildSeries(logs);
+  Widget _buildTrendGraph(List<GenerationLogEntry> logs, Map<String, double> dailyData, double rate) {
+    final series = _buildSeries(logs, dailyData);
     double maxUnits = 1.0;
     for (final e in series) {
       if (e.value > maxUnits) maxUnits = e.value;
     }
-    // Add a little headroom so the tallest bar isn't flush with the top.
     maxUnits = maxUnits * 1.2;
     if (maxUnits < 5) maxUnits = 5;
 
@@ -533,13 +630,16 @@ class _GenerationPageContentState extends State<GenerationPageContent>
               toY: v,
               gradient: v > 0 ? AppColors.primaryGradient : null,
               color: v > 0 ? null : Colors.transparent,
-              width: series.length > 10 ? 8 : 14,
+              width: series.length > 15
+                  ? 6
+                  : series.length > 10
+                      ? 8
+                      : 14,
               borderRadius: BorderRadius.circular(4),
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
                 toY: maxUnits,
-                color:
-                    AppColors.primaryAccent.withOpacity(0.05),
+                color: AppColors.primaryAccent.withOpacity(0.05),
               ),
             ),
           ],
@@ -600,6 +700,14 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                         if (i < 0 || i >= series.length) {
                           return const SizedBox.shrink();
                         }
+                        
+                        if (series.length > 10) {
+                          final interval = (series.length / 5).ceil();
+                          if (i % interval != 0 && i != series.length - 1) {
+                            return const SizedBox.shrink();
+                          }
+                        }
+
                         final label = series[i].key;
                         if (label.isEmpty) return const SizedBox.shrink();
                         return Padding(
@@ -792,17 +900,44 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     );
   }
 
-  Widget _buildDailySavingsTable(List<GenerationLogEntry> logs, double rate) {
-    // Group by date
+  Widget _buildDailySavingsTable(Map<String, double> dailyData, double rate) {
     final Map<String, double> dailyUnits = {};
-    for (final entry in logs) {
-      final dateKey = '${entry.timestamp.year}-${entry.timestamp.month.toString().padLeft(2, '0')}-${entry.timestamp.day.toString().padLeft(2, '0')}';
-      dailyUnits[dateKey] = (dailyUnits[dateKey] ?? 0.0) + entry.units;
+    final now = DateTime.now();
+
+    final index = _tabController.index;
+    List<String> displayDates = [];
+
+    if (index == 3 && _customDateRange != null) {
+      final int days = _customDateRange!.end.difference(_customDateRange!.start).inDays + 1;
+      for (int i = 0; i < days; i++) {
+        final d = _customDateRange!.start.add(Duration(days: i));
+        final key = _formatDateKey(d);
+        if (dailyData.containsKey(key)) {
+          final units = _calculateUnitsForPeriod(d, d, dailyData);
+          if (units > 0) {
+            dailyUnits[key] = units;
+          }
+        }
+      }
+      displayDates = dailyUnits.keys.toList()..sort((a, b) => b.compareTo(a));
+    } else {
+      for (int i = 0; i < 30; i++) {
+        final d = now.subtract(Duration(days: i));
+        final key = _formatDateKey(d);
+        if (dailyData.containsKey(key)) {
+          final units = _calculateUnitsForPeriod(d, d, dailyData);
+          if (units > 0) {
+            dailyUnits[key] = units;
+          }
+        }
+      }
+      final sortedDates = dailyUnits.keys.toList()..sort((a, b) => b.compareTo(a));
+      displayDates = sortedDates.take(7).toList();
     }
 
-    // Sort keys descending
-    final sortedDates = dailyUnits.keys.toList()..sort((a, b) => b.compareTo(a));
-    final displayDates = sortedDates.take(7).toList(); // Show last 7 days of entries
+    if (displayDates.isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return CommonCard(
       padding: const EdgeInsets.all(20),
@@ -889,5 +1024,10 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     ];
     if (month < 1 || month > 12) return '';
     return months[month - 1];
+  }
+
+  String _formatDateShort(DateTime d) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
 }
