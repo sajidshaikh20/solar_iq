@@ -64,8 +64,8 @@ class _NotificationScreenState extends State<NotificationScreen> {
                             onTap: _markAllRead,
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 8,
+                                horizontal: 10,
+                                vertical: 6,
                               ),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(10),
@@ -78,10 +78,21 @@ class _NotificationScreenState extends State<NotificationScreen> {
                                   ),
                                 ),
                               ),
-                              child: CommonText(
-                                AppStrings.markAllRead,
-                                variant: TextVariant.caption,
-                                color: AppColors.primaryAccent,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.done_all_rounded,
+                                    color: AppColors.primaryAccent,
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  CommonText(
+                                    AppStrings.markAllRead,
+                                    variant: TextVariant.caption,
+                                    color: AppColors.primaryAccent,
+                                  ),
+                                ],
                               ),
                             ),
                           )
@@ -127,20 +138,6 @@ class _NotificationScreenState extends State<NotificationScreen> {
                               itemBuilder: (context, index) =>
                                   _buildNotificationCard(notifications[index]),
                             ),
-                    ),
-                    ElevatedButton(
-                      onPressed: () {
-                        _fbService.addNotification(
-                          NotificationModel(
-                            id: '',
-                            title: 'Test Notification',
-                            body: 'This is a test notification',
-                            timestamp: DateTime.now(),
-                            type: NotificationType.generation,
-                          ),
-                        );
-                      },
-                      child: Text('Send Notification'),
                     ),
                     const SizedBox(height: AppSpacing.md),
                   ],

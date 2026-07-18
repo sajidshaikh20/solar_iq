@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/theme/colors.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/text_styles.dart';
@@ -29,20 +30,86 @@ class _RoiScreenState extends State<RoiScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCurrentTariff();
+    _loadStoredData();
   }
 
-  Future<void> _loadCurrentTariff() async {
+  Future<void> _loadStoredData() async {
+    // 1. Instantly load from local SharedPreferences
     try {
-      final rate = await _fbService.getElectricityRateStream().first;
+      final prefs = await SharedPreferences.getInstance();
+      final localInv = prefs.getString('roi_investment');
+      final localDeal = prefs.getString('roi_deal_rate');
+      final localUnits = prefs.getString('roi_monthly_units');
+      final localRate = prefs.getString('roi_unit_rate');
+
       if (mounted) {
-        setState(() {
-          _unitRateController.text = rate.toStringAsFixed(2);
-        });
+        if (localInv != null && localInv.isNotEmpty) _investmentController.text = localInv;
+        if (localDeal != null && localDeal.isNotEmpty) _dealRateController.text = localDeal;
+        if (localUnits != null && localUnits.isNotEmpty) _monthlyUnitsController.text = localUnits;
+        if (localRate != null && localRate.isNotEmpty) _unitRateController.text = localRate;
+
+        if (_investmentController.text.isNotEmpty && _monthlyUnitsController.text.isNotEmpty) {
+          _calculateSilently();
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fetch from Firebase
+    try {
+      final roiData = await _fbService.getRoiDataStream().first.timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => null,
+      );
+
+      if (mounted && roiData != null && roiData.isNotEmpty) {
+        if (roiData['investment'] != null && (roiData['investment'] as num) > 0) {
+          _investmentController.text = (roiData['investment'] as num).toStringAsFixed(0);
+        }
+        if (roiData['dealRate'] != null && (roiData['dealRate'] as num) > 0) {
+          _dealRateController.text = (roiData['dealRate'] as num).toStringAsFixed(2);
+        }
+        if (roiData['monthlyUnits'] != null && (roiData['monthlyUnits'] as num) > 0) {
+          _monthlyUnitsController.text = (roiData['monthlyUnits'] as num).toStringAsFixed(0);
+        }
+        if (roiData['unitRate'] != null && (roiData['unitRate'] as num) > 0) {
+          _unitRateController.text = (roiData['unitRate'] as num).toStringAsFixed(2);
+        }
+        _calculateSilently();
+        _saveToLocalStorage();
       }
     } catch (e) {
-      // Fallback already set as default text
+      // Fallback
     }
+  }
+
+  Future<void> _saveToLocalStorage() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('roi_investment', _investmentController.text);
+      await prefs.setString('roi_deal_rate', _dealRateController.text);
+      await prefs.setString('roi_monthly_units', _monthlyUnitsController.text);
+      await prefs.setString('roi_unit_rate', _unitRateController.text);
+    } catch (_) {}
+  }
+
+  void _calculateSilently() {
+    final investment = double.tryParse(_investmentController.text);
+    final units = double.tryParse(_monthlyUnitsController.text);
+    final unitRate = double.tryParse(_unitRateController.text);
+
+    if (investment == null || units == null || unitRate == null) return;
+
+    final saving = units * unitRate;
+    final remaining = investment - saving;
+    final roiMonths = investment / saving;
+    final paybackYear = DateTime.now().year + (roiMonths / 12).ceil();
+
+    setState(() {
+      _monthlySaving = saving;
+      _remainingRecovery = remaining.clamp(0, investment);
+      _roiMonths = roiMonths;
+      _paybackYear = paybackYear;
+    });
   }
 
   @override
@@ -77,15 +144,49 @@ class _RoiScreenState extends State<RoiScreen> {
       _roiMonths = roiMonths;
       _paybackYear = paybackYear;
     });
+
+    _saveToLocalStorage();
+    _saveRoiDataSilently();
+  }
+
+  Future<void> _saveRoiDataSilently() async {
+    if (_monthlySaving == null) return;
+    _saveToLocalStorage();
+    final unitRate = double.tryParse(_unitRateController.text);
+    if (unitRate != null) {
+      try {
+        await _fbService.saveElectricityRate(unitRate);
+      } catch (_) {}
+    }
+    await _fbService.saveRoiData({
+      'investment': double.tryParse(_investmentController.text) ?? 0,
+      'dealRate': double.tryParse(_dealRateController.text) ?? 0,
+      'monthlyUnits': double.tryParse(_monthlyUnitsController.text) ?? 0,
+      'unitRate': unitRate ?? 8.0,
+      'monthlySaving': _monthlySaving,
+      'remainingRecovery': _remainingRecovery,
+      'paybackPeriod': _roiMonths,
+      'paybackYear': _paybackYear,
+    });
   }
 
   Future<void> _saveRoiData() async {
     if (_monthlySaving == null) return;
 
     setState(() => _isSaving = true);
+    _saveToLocalStorage();
     try {
+      final unitRate = double.tryParse(_unitRateController.text);
+      if (unitRate != null) {
+        try {
+          await _fbService.saveElectricityRate(unitRate);
+        } catch (_) {}
+      }
       final result = await _fbService.saveRoiData({
         'investment': double.tryParse(_investmentController.text) ?? 0,
+        'dealRate': double.tryParse(_dealRateController.text) ?? 0,
+        'monthlyUnits': double.tryParse(_monthlyUnitsController.text) ?? 0,
+        'unitRate': unitRate ?? 8.0,
         'monthlySaving': _monthlySaving,
         'remainingRecovery': _remainingRecovery,
         'paybackPeriod': _roiMonths,
@@ -96,7 +197,7 @@ class _RoiScreenState extends State<RoiScreen> {
         if (result.success) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('ROI data saved to dashboard!'),
+              content: Text('ROI details saved globally!'),
               backgroundColor: Colors.green,
             ),
           );
@@ -137,22 +238,16 @@ class _RoiScreenState extends State<RoiScreen> {
           child: Container(height: 1, color: AppColors.borderColor),
         ),
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  _buildInputCard(),
-                  const SizedBox(height: 20),
-                  if (_monthlySaving != null) _buildResultCard(),
-                ],
-              ),
-            ),
-          ),
-          _buildBottomButton(context),
-        ],
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            _buildInputCard(),
+            const SizedBox(height: 20),
+            if (_monthlySaving != null) _buildResultCard(),
+            const SizedBox(height: 30),
+          ],
+        ),
       ),
     );
   }
@@ -401,18 +496,4 @@ class _RoiScreenState extends State<RoiScreen> {
     );
   }
 
-  Widget _buildBottomButton(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.borderColor)),
-      ),
-      child: CommonButton(
-        label: 'Next',
-        icon: Icons.arrow_forward_rounded,
-        onPressed: () => Navigator.pop(context),
-      ),
-    );
-  }
 }

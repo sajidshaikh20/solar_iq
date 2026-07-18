@@ -1,10 +1,33 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/theme/colors.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/text_styles.dart';
 
 class ServicesScreen extends StatelessWidget {
   const ServicesScreen({super.key});
+
+  Future<void> _launchWhatsAppService(BuildContext context, String serviceTitle, String serviceSubtitle) async {
+    final message = "Hello Solar IQ Team,\n\nI would like to request *${serviceTitle}* (${serviceSubtitle}) for my solar panel installation.\n\nPlease share details and get in touch with me.";
+    final encodedMsg = Uri.encodeComponent(message);
+    final whatsappUrl = Uri.parse("https://wa.me/?text=$encodedMsg");
+
+    try {
+      if (!await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication)) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not open WhatsApp.')),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening WhatsApp: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +73,10 @@ class ServicesScreen extends StatelessWidget {
             const SizedBox(height: 20),
             ...services.map((s) => Padding(
               padding: const EdgeInsets.only(bottom: 14),
-              child: _ServiceCard(item: s),
+              child: _ServiceCard(
+                item: s,
+                onTap: () => _launchWhatsAppService(context, s.title, s.subtitle),
+              ),
             )),
           ],
         ),
@@ -84,7 +110,7 @@ class ServicesScreen extends StatelessWidget {
               children: [
                 Text('Our Services', style: AppTextStyles.headingSmall.copyWith(color: const Color(0xFF2E7D32))),
                 const SizedBox(height: 4),
-                Text('Choose a service to get started', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                Text('Tap any service to request directly via WhatsApp', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
               ],
             ),
           ),
@@ -104,12 +130,13 @@ class _ServiceItem {
 
 class _ServiceCard extends StatelessWidget {
   final _ServiceItem item;
-  const _ServiceCard({required this.item});
+  final VoidCallback onTap;
+  const _ServiceCard({required this.item, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {},
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -147,13 +174,25 @@ class _ServiceCard extends StatelessWidget {
               ),
             ),
             Container(
-              width: 32,
-              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
-                color: item.color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xFF25D366).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(Icons.arrow_forward_ios_rounded, color: item.color, size: 14),
+              child: const Row(
+                children: [
+                  Icon(Icons.chat_bubble_outline_rounded, color: Color(0xFF25D366), size: 14),
+                  SizedBox(width: 4),
+                  Text(
+                    'WhatsApp',
+                    style: TextStyle(
+                      color: Color(0xFF25D366),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

@@ -284,8 +284,6 @@ class _InstallationScreenState extends State<InstallationScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          CommonButton(label: 'Next', onPressed: () => Navigator.pop(context), height: 48),
         ],
       ),
     );

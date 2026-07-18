@@ -221,28 +221,37 @@ class _GenerationPageContentState extends State<GenerationPageContent>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.date_range_rounded, color: AppColors.primaryEmerald, size: 20),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Custom Date Range', style: AppTextStyles.caption.copyWith(color: AppColors.textTertiary)),
-                  const SizedBox(height: 2),
-                  Text('$startStr - $endStr', style: AppTextStyles.labelMedium.copyWith(fontWeight: FontWeight.bold)),
-                ],
-              ),
-            ],
+          Expanded(
+            child: Row(
+              children: [
+                const Icon(Icons.date_range_rounded, color: AppColors.primaryEmerald, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Custom Date Range', style: AppTextStyles.caption.copyWith(color: AppColors.textTertiary)),
+                      const SizedBox(height: 2),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text('$startStr - $endStr', style: AppTextStyles.labelMedium.copyWith(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
+          const SizedBox(width: 8),
           OutlinedButton.icon(
             onPressed: _selectCustomDateRange,
-            icon: const Icon(Icons.edit_calendar_rounded, size: 16, color: AppColors.primaryEmerald),
-            label: const Text('Change', style: TextStyle(color: AppColors.primaryEmerald, fontSize: 13)),
+            icon: const Icon(Icons.edit_calendar_rounded, size: 14, color: AppColors.primaryEmerald),
+            label: const Text('Change', style: TextStyle(color: AppColors.primaryEmerald, fontSize: 12)),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: AppColors.primaryEmerald),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             ),
           ),
         ],

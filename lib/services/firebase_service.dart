@@ -491,6 +491,9 @@ class FirebaseService {
       if (val == null) return 8.0;
       if (val is num) return val.toDouble();
       return double.tryParse(val.toString()) ?? 8.0;
+    }).handleError((error) {
+      dev.log('[GEN-FB] Electricity rate stream error: $error', name: 'FirebaseService');
+      return 8.0;
     });
   }
 

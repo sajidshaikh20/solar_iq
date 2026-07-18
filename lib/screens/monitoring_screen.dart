@@ -69,26 +69,19 @@ class MonitoringScreen extends StatelessWidget {
             ),
           ];
 
-          return Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      _buildSubtitleBanner(),
-                      const SizedBox(height: 20),
-                      ...cards.map((c) => Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: _MonitoringCardWidget(card: c),
-                      )),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                ),
-              ),
-              _buildBottomButton(context),
-            ],
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                _buildSubtitleBanner(),
+                const SizedBox(height: 20),
+                ...cards.map((c) => Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: _MonitoringCardWidget(card: c),
+                )),
+                const SizedBox(height: 30),
+              ],
+            ),
           );
         }
       ),
@@ -109,21 +102,6 @@ class MonitoringScreen extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(child: Text('Today, yesterday, month & lifetime units', style: AppTextStyles.bodySmall.copyWith(color: AppColors.primaryEmerald))),
         ],
-      ),
-    );
-  }
-
-  Widget _buildBottomButton(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.borderColor)),
-      ),
-      child: CommonButton(
-        label: 'Next',
-        icon: Icons.arrow_forward_rounded,
-        onPressed: () => Navigator.pop(context),
       ),
     );
   }

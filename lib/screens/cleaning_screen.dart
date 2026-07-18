@@ -129,13 +129,12 @@ class _CleaningScreenState extends State<CleaningScreen> {
         children: [
           _sectionHeader('Timer Auto Shutoff', Icons.timer_outlined, const Color(0xFF6A1B9A)),
           const SizedBox(height: 16),
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: _timerOptions.map((min) {
               final sel = _timerMin == min;
-              return Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: _PillButton(label: '$min min', selected: sel, color: const Color(0xFF6A1B9A), onTap: () => setState(() => _timerMin = min)),
-              );
+              return _PillButton(label: '$min min', selected: sel, color: const Color(0xFF6A1B9A), onTap: () => setState(() => _timerMin = min));
             }).toList(),
           ),
         ],
@@ -154,6 +153,7 @@ class _CleaningScreenState extends State<CleaningScreen> {
           const SizedBox(height: 16),
           Wrap(
             spacing: 10,
+            runSpacing: 10,
             children: _scheduleOptions.map((days) {
               final sel = _scheduleDays == days;
               return _PillButton(label: 'Every $days days', selected: sel, color: const Color(0xFFE65100), onTap: () => setState(() => _scheduleDays = days));
@@ -174,7 +174,8 @@ class _CleaningScreenState extends State<CleaningScreen> {
           _sectionHeader('Device Selection', Icons.devices_other_rounded, AppColors.primaryEmerald),
           const SizedBox(height: 16),
           Wrap(
-            spacing: 8,
+            spacing: 10,
+            runSpacing: 10,
             children: _devices.map((device) {
               final sel = _selectedDevices.contains(device);
               return GestureDetector(
@@ -187,17 +188,17 @@ class _CleaningScreenState extends State<CleaningScreen> {
                 }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
                     color: sel ? AppColors.primaryEmerald : Colors.white,
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: sel ? AppColors.primaryEmerald : AppColors.borderColor),
-                    boxShadow: sel ? [BoxShadow(color: AppColors.primaryEmerald.withOpacity(0.3), blurRadius: 8)] : [],
+                    boxShadow: sel ? [BoxShadow(color: AppColors.primaryEmerald.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))] : [],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (sel) const Padding(padding: EdgeInsets.only(right: 6), child: Icon(Icons.check_circle_rounded, size: 14, color: Colors.white)),
+                      if (sel) const Padding(padding: EdgeInsets.only(right: 6), child: Icon(Icons.check_circle_rounded, size: 15, color: Colors.white)),
                       Text(device, style: AppTextStyles.caption.copyWith(color: sel ? Colors.white : AppColors.textSecondary, fontWeight: FontWeight.w600)),
                     ],
                   ),
@@ -295,8 +296,6 @@ class _CleaningScreenState extends State<CleaningScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          CommonButton(label: 'Next', onPressed: () => Navigator.pop(context), height: 48),
         ],
       ),
     );
