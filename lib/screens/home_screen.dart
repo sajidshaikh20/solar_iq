@@ -31,7 +31,7 @@ class HomePageContent extends StatelessWidget {
           const SizedBox(height: 20),
           _buildTotalSavingsCard(fbService),
           const SizedBox(height: 16),
-          _buildDynamicSavingsCards(fbService),
+        //  _buildDynamicSavingsCards(fbService),
           const SizedBox(height: 24),
           Text(
             'Quick Actions & Tools',

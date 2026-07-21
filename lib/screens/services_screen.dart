@@ -7,13 +7,29 @@ import '../core/theme/text_styles.dart';
 class ServicesScreen extends StatelessWidget {
   const ServicesScreen({super.key});
 
-  Future<void> _launchWhatsAppService(BuildContext context, String serviceTitle, String serviceSubtitle) async {
-    final message = "Hello Solar IQ Team,\n\nI would like to request *${serviceTitle}* (${serviceSubtitle}) for my solar panel installation.\n\nPlease share details and get in touch with me.";
+  Future<void> _launchWhatsAppService(
+      BuildContext context,
+      String serviceTitle,
+      String serviceSubtitle,
+      ) async {
+    const phoneNumber = "918102062123"; // Country code +91
+
+    final message =
+        "Hello Solar IQ Team,\n\n"
+        "I would like to request *$serviceTitle* ($serviceSubtitle) for my solar panel installation.\n\n"
+        "Please share details and get in touch with me.";
+
     final encodedMsg = Uri.encodeComponent(message);
-    final whatsappUrl = Uri.parse("https://wa.me/?text=$encodedMsg");
+
+    final whatsappUrl = Uri.parse(
+      "https://wa.me/$phoneNumber?text=$encodedMsg",
+    );
 
     try {
-      if (!await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication)) {
+      if (!await launchUrl(
+        whatsappUrl,
+        mode: LaunchMode.externalApplication,
+      )) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Could not open WhatsApp.')),
@@ -28,7 +44,6 @@ class ServicesScreen extends StatelessWidget {
       }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final services = [
