@@ -16,13 +16,18 @@ class EnergyData {
   });
 
   factory EnergyData.fromMap(Map<dynamic, dynamic> map) {
+    DateTime parsedTs = DateTime.now();
+    if (map['timestamp'] != null) {
+      final ts = DateTime.tryParse(map['timestamp'].toString());
+      if (ts != null) parsedTs = ts;
+    }
     return EnergyData(
       battery: (map['battery'] ?? 0.0).toDouble(),
       current: (map['current'] ?? 0.0).toDouble(),
       power: (map['power'] ?? 0.0).toDouble(),
       units: (map['units'] ?? 0.0).toDouble(),
       voltage: (map['voltage'] ?? 0.0).toDouble(),
-      timestamp: DateTime.now(),
+      timestamp: parsedTs,
     );
   }
 

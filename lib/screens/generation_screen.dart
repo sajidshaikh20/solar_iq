@@ -56,8 +56,10 @@ class _GenerationPageContentState extends State<GenerationPageContent>
       end: now,
     );
 
-    dev.log('[GEN-SCREEN] initState: streams initialised',
-        name: 'GenerationScreen');
+    dev.log(
+      '[GEN-SCREEN] initState: streams initialised',
+      name: 'GenerationScreen',
+    );
   }
 
   @override
@@ -78,60 +80,89 @@ class _GenerationPageContentState extends State<GenerationPageContent>
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                  AppSpacing.lg,
+                  0,
+                ),
                 child: _buildTabBar(),
               ),
               Expanded(
-                child: StreamBuilder<Map<String, double>>(
-                  stream: _dailyStream,
-                  builder: (context, dailySnapshot) {
-                    final dailyData = dailySnapshot.data ?? const <String, double>{};
+                child: StreamBuilder<EnergyData>(
+                  stream: _energyStream,
+                  builder: (context, energySnapshot) {
+                    final liveEnergy = energySnapshot.data;
 
-                    final today = _todayFromDaily(dailyData);
-                    final yesterday = _yesterdayFromDaily(dailyData);
-                    final thisMonth = _thisMonthFromDaily(dailyData);
-                    final lastMonth = _lastMonthFromDaily(dailyData);
-                    final total = _totalFromDaily(dailyData);
-                    
-                    final customUnits = _calculateUnitsForPeriod(
-                        _customDateRange!.start,
-                        _customDateRange!.end,
-                        dailyData);
+                    return StreamBuilder<Map<String, double>>(
+                      stream: _dailyStream,
+                      builder: (context, dailySnapshot) {
+                        final dailyData =
+                            dailySnapshot.data ?? const <String, double>{};
 
-                    return StreamBuilder<List<GenerationLogEntry>>(
-                      stream: _logsStream,
-                      builder: (context, logsSnapshot) {
-                        final logs = logsSnapshot.data ?? const <GenerationLogEntry>[];
+                        final today = _todayFromDaily(dailyData, liveEnergy);
+                        final yesterday = _yesterdayFromDaily(dailyData);
+                        final thisMonth = _thisMonthFromDaily(dailyData);
+                        final lastMonth = _lastMonthFromDaily(dailyData);
+                        final total = _totalFromDaily(dailyData);
 
-                        return SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 0),
-                          child: Column(
-                            children: [
-                              _buildLiveStatus(),
-                              const SizedBox(height: AppSpacing.lg),
-                              _buildCustomDateSelector(),
-                              _buildMainStat(today, yesterday, thisMonth, total, rate, customUnits),
-                              const SizedBox(height: AppSpacing.lg),
-                              _buildTrendGraph(logs, dailyData, rate),
-                              const SizedBox(height: AppSpacing.lg),
-                              _buildMonthlyComparison(thisMonth, lastMonth, rate),
-                              const SizedBox(height: AppSpacing.lg),
-                              _buildEnvironmentalImpact(total),
-                              const SizedBox(height: AppSpacing.lg),
-                              _buildDailySavingsTable(dailyData, rate),
-                              const SizedBox(height: 120),
-                            ],
-                          ),
+                        final customUnits = _customUnitsFromDaily(
+                          dailyData,
+                          _customDateRange,
                         );
-                      }
+
+                        return StreamBuilder<List<GenerationLogEntry>>(
+                          stream: _logsStream,
+                          builder: (context, logsSnapshot) {
+                            final logs =
+                                logsSnapshot.data ??
+                                const <GenerationLogEntry>[];
+
+                            return SingleChildScrollView(
+                              padding: const EdgeInsets.fromLTRB(
+                                AppSpacing.lg,
+                                AppSpacing.lg,
+                                AppSpacing.lg,
+                                0,
+                              ),
+                              child: Column(
+                                children: [
+                                  _buildLiveStatus(),
+                                  const SizedBox(height: AppSpacing.lg),
+                                  _buildCustomDateSelector(),
+                                  _buildMainStat(
+                                    today,
+                                    yesterday,
+                                    thisMonth,
+                                    total,
+                                    rate,
+                                    customUnits,
+                                  ),
+                                  const SizedBox(height: AppSpacing.lg),
+                                  _buildTrendGraph(logs, dailyData, rate),
+                                  const SizedBox(height: AppSpacing.lg),
+                                  _buildMonthlyComparison(
+                                    thisMonth,
+                                    lastMonth,
+                                    rate,
+                                  ),
+                                  const SizedBox(height: AppSpacing.lg),
+                                  _buildEnvironmentalImpact(total),
+                                  const SizedBox(height: AppSpacing.lg),
+                                  _buildDailySavingsTable(dailyData, rate),
+                                  const SizedBox(height: 120),
+                                ],
+                              ),
+                            );
+                          },
+                        );
+                      },
                     );
-                  }
+                  },
                 ),
               ),
             ],
           );
-        }
+        },
       ),
     );
   }
@@ -224,18 +255,32 @@ class _GenerationPageContentState extends State<GenerationPageContent>
           Expanded(
             child: Row(
               children: [
-                const Icon(Icons.date_range_rounded, color: AppColors.primaryEmerald, size: 20),
+                const Icon(
+                  Icons.date_range_rounded,
+                  color: AppColors.primaryEmerald,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Custom Date Range', style: AppTextStyles.caption.copyWith(color: AppColors.textTertiary)),
+                      Text(
+                        'Custom Date Range',
+                        style: AppTextStyles.caption.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
-                        child: Text('$startStr - $endStr', style: AppTextStyles.labelMedium.copyWith(fontWeight: FontWeight.bold)),
+                        child: Text(
+                          '$startStr - $endStr',
+                          style: AppTextStyles.labelMedium.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -246,11 +291,20 @@ class _GenerationPageContentState extends State<GenerationPageContent>
           const SizedBox(width: 8),
           OutlinedButton.icon(
             onPressed: _selectCustomDateRange,
-            icon: const Icon(Icons.edit_calendar_rounded, size: 14, color: AppColors.primaryEmerald),
-            label: const Text('Change', style: TextStyle(color: AppColors.primaryEmerald, fontSize: 12)),
+            icon: const Icon(
+              Icons.edit_calendar_rounded,
+              size: 14,
+              color: AppColors.primaryEmerald,
+            ),
+            label: const Text(
+              'Change',
+              style: TextStyle(color: AppColors.primaryEmerald, fontSize: 12),
+            ),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: AppColors.primaryEmerald),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             ),
           ),
@@ -291,182 +345,263 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
-  double _getReadingOnOrBefore(DateTime target, Map<String, double> dailyData, {int maxDaysBack = 30}) {
-    for (int i = 0; i <= maxDaysBack; i++) {
-      final key = _formatDateKey(target.subtract(Duration(days: i)));
-      if (dailyData.containsKey(key)) {
-        return dailyData[key] ?? 0.0;
-      }
-    }
-    // Fallback: search sorted keys
+  /// Converts raw `dailyData` (whether cumulative meter readings or daily totals)
+  /// into a map of normalized per-day generated kWh: DateKey -> kWh generated on that day.
+  Map<String, double> _getNormalizedPerDayUnits(Map<String, double> dailyData) {
+    if (dailyData.isEmpty) return {};
+
     final sortedKeys = dailyData.keys.toList()..sort();
-    final targetStr = _formatDateKey(target);
-    for (int i = sortedKeys.length - 1; i >= 0; i--) {
-      if (sortedKeys[i].compareTo(targetStr) <= 0) {
-        return dailyData[sortedKeys[i]] ?? 0.0;
+
+    // Determine if the values are cumulative (monotonically non-decreasing)
+    bool isCumulative = sortedKeys.length > 1;
+    for (int i = 1; i < sortedKeys.length; i++) {
+      final prev = dailyData[sortedKeys[i - 1]] ?? 0.0;
+      final curr = dailyData[sortedKeys[i]] ?? 0.0;
+      if (curr < prev && prev > 0) {
+        isCumulative = false;
+        break;
       }
     }
-    return 0.0;
+
+    final Map<String, double> perDay = {};
+
+    if (isCumulative && sortedKeys.length > 1) {
+      for (int i = 1; i < sortedKeys.length; i++) {
+        final key = sortedKeys[i];
+        final currVal = dailyData[key] ?? 0.0;
+        final prevVal = dailyData[sortedKeys[i - 1]] ?? 0.0;
+        final diff = currVal - prevVal;
+        perDay[key] = diff > 0 ? diff : 0.0;
+      }
+      perDay[sortedKeys[0]] = 0.0;
+    } else {
+      dailyData.forEach((key, val) {
+        perDay[key] = val > 0 ? val : 0.0;
+      });
+    }
+
+    return perDay;
   }
 
-  double _calculateUnitsForPeriod(DateTime start, DateTime end, Map<String, double> dailyData) {
-    if (dailyData.isEmpty) return 0.0;
-    final double endVal = _getReadingOnOrBefore(end, dailyData);
-    final double startVal = _getReadingOnOrBefore(start.subtract(const Duration(days: 1)), dailyData);
-    final diff = endVal - startVal;
-    return diff > 0 ? diff : 0.0;
-  }
-
-  double _todayFromDaily(Map<String, double> dailyData) {
+  double _todayFromDaily(
+    Map<String, double> dailyData,
+    EnergyData? liveEnergy,
+  ) {
     final now = DateTime.now();
-    return _calculateUnitsForPeriod(now, now, dailyData);
+    final todayKey = _formatDateKey(now);
+    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+
+    if (perDayMap.containsKey(todayKey) && perDayMap[todayKey]! > 0) {
+      return perDayMap[todayKey]!;
+    }
+
+    // Check if live stream has a reading recorded TODAY
+    if (liveEnergy != null && liveEnergy.units > 0) {
+      final ts = liveEnergy.timestamp;
+      final bool isLiveToday =
+          ts.year == now.year && ts.month == now.month && ts.day == now.day;
+      if (isLiveToday) {
+        return liveEnergy.units;
+      }
+    }
+
+    // New day starting -> 0 progress until generation arrives
+    return 0.0;
   }
 
   double _yesterdayFromDaily(Map<String, double> dailyData) {
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
-    return _calculateUnitsForPeriod(yesterday, yesterday, dailyData);
+    final yesterdayKey = _formatDateKey(yesterday);
+    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+    return perDayMap[yesterdayKey] ?? 0.0;
   }
 
   double _thisMonthFromDaily(Map<String, double> dailyData) {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, 1);
-    return _calculateUnitsForPeriod(start, now, dailyData);
+    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+    double monthTotal = 0.0;
+
+    final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final endDay = now.day < daysInMonth ? now.day : daysInMonth;
+
+    for (int day = 1; day <= endDay; day++) {
+      final date = DateTime(now.year, now.month, day);
+      final key = _formatDateKey(date);
+      monthTotal += perDayMap[key] ?? 0.0;
+    }
+
+    return monthTotal;
   }
 
   double _lastMonthFromDaily(Map<String, double> dailyData) {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month - 1, 1);
-    final end = DateTime(now.year, now.month, 0); // Last day of last month
-    return _calculateUnitsForPeriod(start, end, dailyData);
+    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+    double monthTotal = 0.0;
+
+    final lastMonthDate = DateTime(now.year, now.month - 1, 1);
+    final daysInLastMonth = DateTime(now.year, now.month, 0).day;
+
+    for (int day = 1; day <= daysInLastMonth; day++) {
+      final date = DateTime(lastMonthDate.year, lastMonthDate.month, day);
+      final key = _formatDateKey(date);
+      monthTotal += perDayMap[key] ?? 0.0;
+    }
+
+    return monthTotal;
+  }
+
+  double _customUnitsFromDaily(
+    Map<String, double> dailyData,
+    DateTimeRange? range,
+  ) {
+    if (range == null) return 0.0;
+    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+    double total = 0.0;
+
+    final int days = range.end.difference(range.start).inDays + 1;
+    for (int i = 0; i < days; i++) {
+      final d = range.start.add(Duration(days: i));
+      final key = _formatDateKey(d);
+      total += perDayMap[key] ?? 0.0;
+    }
+
+    return total;
   }
 
   double _totalFromDaily(Map<String, double> dailyData) {
     if (dailyData.isEmpty) return 0.0;
-    double maxVal = 0.0;
-    dailyData.forEach((key, val) {
-      if (val > maxVal) maxVal = val;
-    });
-    return maxVal;
+    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+    double sum = 0.0;
+    perDayMap.forEach((_, val) => sum += val);
+    return sum;
   }
 
   // ---- Main statistics widget ----
-  Widget _buildMainStat(double today, double yesterday, double thisMonth, double total, double rate, double customUnits) {
-    return StreamBuilder<EnergyData>(
-      stream: _energyStream,
-      builder: (context, energySnapshot) {
-        String value = '0';
-        final index = _tabController.index;
+  Widget _buildMainStat(
+    double today,
+    double yesterday,
+    double thisMonth,
+    double total,
+    double rate,
+    double customUnits,
+  ) {
+    String value = '0';
+    final index = _tabController.index;
 
-        if (index == 0) {
-          if (energySnapshot.hasData &&
-              energySnapshot.data!.units > 0) {
-            value = energySnapshot.data!.units.toStringAsFixed(2);
-          } else {
-            value = today.toStringAsFixed(1);
-          }
-        } else if (index == 1) {
-          value = yesterday.toStringAsFixed(1);
-        } else if (index == 2) {
-          value = thisMonth.toStringAsFixed(1);
-        } else {
-          value = customUnits.toStringAsFixed(1);
-        }
+    if (index == 0) {
+      value = today.toStringAsFixed(1);
+    } else if (index == 1) {
+      value = yesterday.toStringAsFixed(1);
+    } else if (index == 2) {
+      value = thisMonth.toStringAsFixed(1);
+    } else {
+      value = customUnits.toStringAsFixed(1);
+    }
 
-        final double doubleVal = double.tryParse(value) ?? 0.0;
-        final double savingsVal = doubleVal * rate;
+    final double doubleVal = double.tryParse(value) ?? 0.0;
+    final double savingsVal = doubleVal * rate;
 
-        return Column(
+    return Column(
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: CommonCard(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: [AppColors.primaryAccent, AppColors.primaryEmerald],
-                            ),
-                          ),
-                          child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 20),
+            Expanded(
+              child: CommonCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.primaryAccent,
+                            AppColors.primaryEmerald,
+                          ],
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          value,
-                          style: AppTextStyles.headingLarge.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.primaryEmerald,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 4),
-                        CommonText(
-                          _tabController.index == 0
-                              ? 'kWh Today'
-                              : _tabController.index == 1
-                                  ? 'kWh Yesterday'
-                                  : _tabController.index == 2
-                                      ? 'kWh This Month'
-                                      : 'kWh Custom Range',
-                          variant: TextVariant.caption,
-                          color: AppColors.textSecondary.withOpacity(0.7),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                      ),
+                      child: const Icon(
+                        Icons.bolt_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: CommonCard(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: const Color(0xFFE65100).withOpacity(0.1),
-                          ),
-                          child: const Icon(Icons.currency_rupee_rounded, color: Color(0xFFE65100), size: 20),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          '₹${savingsVal.toStringAsFixed(2)}',
-                          style: AppTextStyles.headingLarge.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: const Color(0xFFE65100),
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 4),
-                        CommonText(
-                          _tabController.index == 0
-                              ? "Today's Savings"
-                              : _tabController.index == 1
-                                  ? "Yesterday's Savings"
-                                  : _tabController.index == 2
-                                      ? "This Month's Savings"
-                                      : "Custom Range Savings",
-                          variant: TextVariant.caption,
-                          color: AppColors.textSecondary.withOpacity(0.7),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                    const SizedBox(height: 12),
+                    Text(
+                      value,
+                      style: AppTextStyles.headingLarge.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primaryEmerald,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
+                    const SizedBox(height: 4),
+                    CommonText(
+                      _tabController.index == 0
+                          ? 'kWh Today'
+                          : _tabController.index == 1
+                          ? 'kWh Yesterday'
+                          : _tabController.index == 2
+                          ? 'kWh This Month'
+                          : 'kWh Custom Range',
+                      variant: TextVariant.caption,
+                      color: AppColors.textSecondary.withOpacity(0.7),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
-              ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: CommonCard(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: const Color(0xFFE65100).withOpacity(0.1),
+                      ),
+                      child: const Icon(
+                        Icons.currency_rupee_rounded,
+                        color: Color(0xFFE65100),
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      '₹${savingsVal.toStringAsFixed(2)}',
+                      style: AppTextStyles.headingLarge.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: const Color(0xFFE65100),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    CommonText(
+                      _tabController.index == 0
+                          ? "Today's Savings"
+                          : _tabController.index == 1
+                          ? "Yesterday's Savings"
+                          : _tabController.index == 2
+                          ? "This Month's Savings"
+                          : "Custom Range Savings",
+                      variant: TextVariant.caption,
+                      color: AppColors.textSecondary.withOpacity(0.7),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
-        );
-      }
+        ),
+      ],
     );
   }
 
@@ -482,18 +617,38 @@ class _GenerationPageContentState extends State<GenerationPageContent>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const CommonText('Live System Status', variant: TextVariant.labelLarge),
+                  const CommonText(
+                    'Live System Status',
+                    variant: TextVariant.labelLarge,
+                  ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.primaryEmerald.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       children: [
-                        Container(width: 6, height: 6, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.primaryEmerald)),
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.primaryEmerald,
+                          ),
+                        ),
                         const SizedBox(width: 4),
-                        const Text('Live', style: TextStyle(fontSize: 10, color: AppColors.primaryEmerald, fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Live',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: AppColors.primaryEmerald,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -502,15 +657,27 @@ class _GenerationPageContentState extends State<GenerationPageContent>
               const SizedBox(height: 20),
               Row(
                 children: [
-                  _buildLiveIndicator(Icons.bolt_rounded, '${data?.power.toStringAsFixed(1) ?? '0'} W', 'Power'),
-                  _buildLiveIndicator(Icons.speed_rounded, '${data?.voltage.toStringAsFixed(1) ?? '0'}V', 'Voltage'),
-                  _buildLiveIndicator(Icons.electric_moped_rounded, '${data?.current.toStringAsFixed(2) ?? '0'}A', 'Current'),
+                  _buildLiveIndicator(
+                    Icons.bolt_rounded,
+                    '${data?.power.toStringAsFixed(1) ?? '0'} W',
+                    'Power',
+                  ),
+                  _buildLiveIndicator(
+                    Icons.speed_rounded,
+                    '${data?.voltage.toStringAsFixed(1) ?? '0'}V',
+                    'Voltage',
+                  ),
+                  _buildLiveIndicator(
+                    Icons.electric_moped_rounded,
+                    '${data?.current.toStringAsFixed(2) ?? '0'}A',
+                    'Current',
+                  ),
                 ],
               ),
             ],
           ),
         );
-      }
+      },
     );
   }
 
@@ -535,24 +702,31 @@ class _GenerationPageContentState extends State<GenerationPageContent>
       case 1:
         return 'Yesterday (Hourly)';
       case 2:
-        return 'This Month (Week-wise)';
+        return 'This Month (30-Day Breakdown)';
       default:
         if (_customDateRange != null) {
-          return 'Selected Period (Daily)';
+          return 'Custom Range (Daily Breakdown)';
         }
-        return 'Last 7 Days';
+        return 'Daily Generation';
     }
   }
 
-  List<MapEntry<String, double>> _buildSeries(List<GenerationLogEntry> logs, Map<String, double> dailyData) {
+  List<MapEntry<String, double>> _buildSeries(
+    List<GenerationLogEntry> logs,
+    Map<String, double> dailyData,
+  ) {
     final now = DateTime.now();
     final index = _tabController.index;
+    final perDayMap = _getNormalizedPerDayUnits(dailyData);
 
     if (index == 0 || index == 1) {
       final DateTime targetDay = index == 0
           ? DateTime(now.year, now.month, now.day)
-          : DateTime(now.year, now.month, now.day)
-              .subtract(const Duration(days: 1));
+          : DateTime(
+              now.year,
+              now.month,
+              now.day,
+            ).subtract(const Duration(days: 1));
 
       const int startHour = 6;
       const int endHour = 20;
@@ -574,52 +748,50 @@ class _GenerationPageContentState extends State<GenerationPageContent>
         final hour = startHour + i;
         final label = (i % 3 == 0)
             ? (hour == 12
-                ? '12P'
-                : hour > 12
-                    ? '${hour - 12}P'
-                    : '${hour}A')
+                  ? '12P'
+                  : hour > 12
+                  ? '${hour - 12}P'
+                  : '${hour}A')
             : '';
         return MapEntry(label, hourly[i]);
       });
     }
 
     if (index == 2) {
-      final DateTime monthStart = DateTime(now.year, now.month, 1);
-      final DateTime nextMonth = DateTime(now.year, now.month + 1, 1);
-      final int daysInMonth = nextMonth.difference(monthStart).inDays;
-      final int totalWeeks = ((daysInMonth - 1) ~/ 7) + 1;
-      final List<double> weekly = List.filled(totalWeeks, 0.0);
+      // This Month: 30 days of the month
+      final int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+      final List<MapEntry<String, double>> series = [];
 
-      for (int i = 1; i <= daysInMonth; i++) {
-        final targetDate = DateTime(now.year, now.month, i);
+      for (int day = 1; day <= daysInMonth; day++) {
+        final targetDate = DateTime(now.year, now.month, day);
         final dateKey = _formatDateKey(targetDate);
-        if (dailyData.containsKey(dateKey)) {
-          final units = _calculateUnitsForPeriod(targetDate, targetDate, dailyData);
-          final int weekIdx = (i - 1) ~/ 7;
-          if (weekIdx >= 0 && weekIdx < totalWeeks) {
-            weekly[weekIdx] += units;
-          }
-        }
+        final units = perDayMap[dateKey] ?? 0.0;
+        series.add(MapEntry('$day', units));
       }
 
-      return List<MapEntry<String, double>>.generate(
-          totalWeeks, (i) => MapEntry('W${i + 1}', weekly[i]));
+      return series;
     }
 
     if (_customDateRange == null) return [];
-    final int days = _customDateRange!.end.difference(_customDateRange!.start).inDays + 1;
+    final int days =
+        _customDateRange!.end.difference(_customDateRange!.start).inDays + 1;
     final List<MapEntry<String, double>> series = [];
 
     for (int i = 0; i < days; i++) {
       final d = _customDateRange!.start.add(Duration(days: i));
-      final units = _calculateUnitsForPeriod(d, d, dailyData);
+      final dateKey = _formatDateKey(d);
+      final units = perDayMap[dateKey] ?? 0.0;
       final label = '${d.day}/${d.month}';
       series.add(MapEntry(label, units));
     }
     return series;
   }
 
-  Widget _buildTrendGraph(List<GenerationLogEntry> logs, Map<String, double> dailyData, double rate) {
+  Widget _buildTrendGraph(
+    List<GenerationLogEntry> logs,
+    Map<String, double> dailyData,
+    double rate,
+  ) {
     final series = _buildSeries(logs, dailyData);
     double maxUnits = 1.0;
     for (final e in series) {
@@ -642,8 +814,8 @@ class _GenerationPageContentState extends State<GenerationPageContent>
               width: series.length > 15
                   ? 6
                   : series.length > 10
-                      ? 8
-                      : 14,
+                  ? 8
+                  : 14,
               borderRadius: BorderRadius.circular(4),
               backDrawRodData: BackgroundBarChartRodData(
                 show: true,
@@ -668,8 +840,11 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                 variant: TextVariant.labelLarge,
                 color: AppColors.textPrimary,
               ),
-              const Icon(Icons.show_chart_rounded,
-                  color: AppColors.primaryEmerald, size: 20),
+              const Icon(
+                Icons.show_chart_rounded,
+                color: AppColors.primaryEmerald,
+                size: 20,
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -692,9 +867,10 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                         '${rod.toY.toStringAsFixed(2)} kWh\n'
                         '₹${savings.toStringAsFixed(2)}',
                         const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12),
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
                       );
                     },
                   ),
@@ -709,7 +885,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                         if (i < 0 || i >= series.length) {
                           return const SizedBox.shrink();
                         }
-                        
+
                         if (series.length > 10) {
                           final interval = (series.length / 5).ceil();
                           if (i % interval != 0 && i != series.length - 1) {
@@ -724,8 +900,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                           child: Text(
                             label,
                             style: AppTextStyles.caption.copyWith(
-                              color: AppColors.textSecondary
-                                  .withOpacity(0.6),
+                              color: AppColors.textSecondary.withOpacity(0.6),
                               fontSize: 10,
                             ),
                           ),
@@ -735,11 +910,14 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                     ),
                   ),
                   leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                 ),
                 gridData: const FlGridData(show: false),
                 borderData: FlBorderData(show: false),
@@ -752,7 +930,11 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     );
   }
 
-  Widget _buildMonthlyComparison(double thisMonthUnits, double lastMonthUnits, double rate) {
+  Widget _buildMonthlyComparison(
+    double thisMonthUnits,
+    double lastMonthUnits,
+    double rate,
+  ) {
     final diffUnits = thisMonthUnits - lastMonthUnits;
     final diffSavings = diffUnits * rate;
 
@@ -762,7 +944,9 @@ class _GenerationPageContentState extends State<GenerationPageContent>
 
     final now = DateTime.now();
     final thisMonthName = _getMonthName(now.month);
-    final lastMonthName = _getMonthName(DateTime(now.year, now.month - 1).month);
+    final lastMonthName = _getMonthName(
+      DateTime(now.year, now.month - 1).month,
+    );
 
     return CommonCard(
       child: Column(
@@ -771,9 +955,14 @@ class _GenerationPageContentState extends State<GenerationPageContent>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const CommonText('Monthly Comparison', variant: TextVariant.labelLarge),
+              const CommonText(
+                'Monthly Comparison',
+                variant: TextVariant.labelLarge,
+              ),
               Icon(
-                isPositive ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+                isPositive
+                    ? Icons.trending_up_rounded
+                    : Icons.trending_down_rounded,
                 color: trendColor,
                 size: 20,
               ),
@@ -833,10 +1022,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                   ),
                   Text(
                     '$sign₹${diffSavings.toStringAsFixed(2)}',
-                    style: TextStyle(
-                      color: trendColor,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: trendColor, fontSize: 12),
                   ),
                 ],
               ),
@@ -849,7 +1035,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
 
   Widget _buildEnvironmentalImpact(double totalUnits) {
     final co2 = totalUnits * 0.79; // kg CO2
-    final trees = co2 / 22.0;      // trees equivalent
+    final trees = co2 / 22.0; // trees equivalent
 
     return CommonCard(
       child: Column(
@@ -859,7 +1045,10 @@ class _GenerationPageContentState extends State<GenerationPageContent>
             children: [
               Icon(Icons.eco_outlined, color: Colors.green.shade600, size: 20),
               const SizedBox(width: 8),
-              const CommonText('Environmental Impact', variant: TextVariant.labelLarge),
+              const CommonText(
+                'Environmental Impact',
+                variant: TextVariant.labelLarge,
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -910,6 +1099,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
   }
 
   Widget _buildDailySavingsTable(Map<String, double> dailyData, double rate) {
+    final perDayMap = _getNormalizedPerDayUnits(dailyData);
     final Map<String, double> dailyUnits = {};
     final now = DateTime.now();
 
@@ -917,15 +1107,26 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     List<String> displayDates = [];
 
     if (index == 3 && _customDateRange != null) {
-      final int days = _customDateRange!.end.difference(_customDateRange!.start).inDays + 1;
+      final int days =
+          _customDateRange!.end.difference(_customDateRange!.start).inDays + 1;
       for (int i = 0; i < days; i++) {
         final d = _customDateRange!.start.add(Duration(days: i));
         final key = _formatDateKey(d);
-        if (dailyData.containsKey(key)) {
-          final units = _calculateUnitsForPeriod(d, d, dailyData);
-          if (units > 0) {
-            dailyUnits[key] = units;
-          }
+        final val = perDayMap[key] ?? 0.0;
+        if (val > 0) {
+          dailyUnits[key] = val;
+        }
+      }
+      displayDates = dailyUnits.keys.toList()..sort((a, b) => b.compareTo(a));
+    } else if (index == 2) {
+      final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+      for (int day = 1; day <= daysInMonth; day++) {
+        final d = DateTime(now.year, now.month, day);
+        if (d.isAfter(now)) break;
+        final key = _formatDateKey(d);
+        final val = perDayMap[key] ?? 0.0;
+        if (val > 0) {
+          dailyUnits[key] = val;
         }
       }
       displayDates = dailyUnits.keys.toList()..sort((a, b) => b.compareTo(a));
@@ -933,14 +1134,13 @@ class _GenerationPageContentState extends State<GenerationPageContent>
       for (int i = 0; i < 30; i++) {
         final d = now.subtract(Duration(days: i));
         final key = _formatDateKey(d);
-        if (dailyData.containsKey(key)) {
-          final units = _calculateUnitsForPeriod(d, d, dailyData);
-          if (units > 0) {
-            dailyUnits[key] = units;
-          }
+        final val = perDayMap[key] ?? 0.0;
+        if (val > 0) {
+          dailyUnits[key] = val;
         }
       }
-      final sortedDates = dailyUnits.keys.toList()..sort((a, b) => b.compareTo(a));
+      final sortedDates = dailyUnits.keys.toList()
+        ..sort((a, b) => b.compareTo(a));
       displayDates = sortedDates.take(7).toList();
     }
 
@@ -953,7 +1153,10 @@ class _GenerationPageContentState extends State<GenerationPageContent>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CommonText('Recent Daily Breakdowns', variant: TextVariant.labelLarge),
+          const CommonText(
+            'Recent Daily Breakdowns',
+            variant: TextVariant.labelLarge,
+          ),
           const SizedBox(height: 16),
           Table(
             columnWidths: const {
@@ -964,27 +1167,44 @@ class _GenerationPageContentState extends State<GenerationPageContent>
             children: [
               TableRow(
                 decoration: BoxDecoration(
-                  border: Border(bottom: BorderSide(color: AppColors.borderColor, width: 1.5)),
+                  border: Border(
+                    bottom: BorderSide(
+                      color: AppColors.borderColor,
+                      width: 1.5,
+                    ),
+                  ),
                 ),
                 children: const [
                   Padding(
                     padding: EdgeInsets.only(bottom: 8.0),
-                    child: CommonText('Date', variant: TextVariant.labelMedium, fontWeight: FontWeight.bold),
+                    child: CommonText(
+                      'Date',
+                      variant: TextVariant.labelMedium,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   Padding(
                     padding: EdgeInsets.only(bottom: 8.0),
-                    child: CommonText('Units (kWh)', variant: TextVariant.labelMedium, fontWeight: FontWeight.bold),
+                    child: CommonText(
+                      'Units (kWh)',
+                      variant: TextVariant.labelMedium,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   Padding(
                     padding: EdgeInsets.only(bottom: 8.0),
-                    child: CommonText('Savings', variant: TextVariant.labelMedium, fontWeight: FontWeight.bold),
+                    child: CommonText(
+                      'Savings',
+                      variant: TextVariant.labelMedium,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ],
               ),
               ...displayDates.map((dateStr) {
                 final units = dailyUnits[dateStr] ?? 0.0;
                 final savings = units * rate;
-                
+
                 final parts = dateStr.split('-');
                 final day = int.parse(parts[2]);
                 final month = int.parse(parts[1]);
@@ -992,20 +1212,34 @@ class _GenerationPageContentState extends State<GenerationPageContent>
 
                 return TableRow(
                   decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: AppColors.borderColor.withOpacity(0.5))),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: AppColors.borderColor.withOpacity(0.5),
+                      ),
+                    ),
                   ),
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: CommonText(formattedDate, variant: TextVariant.bodyMedium),
+                      child: CommonText(
+                        formattedDate,
+                        variant: TextVariant.bodyMedium,
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: CommonText('${units.toStringAsFixed(1)} kWh', variant: TextVariant.bodyMedium),
+                      child: CommonText(
+                        '${units.toStringAsFixed(1)} kWh',
+                        variant: TextVariant.bodyMedium,
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: CommonText('₹${savings.toStringAsFixed(2)}', variant: TextVariant.bodyMedium, color: const Color(0xFFE65100)),
+                      child: CommonText(
+                        '₹${savings.toStringAsFixed(2)}',
+                        variant: TextVariant.bodyMedium,
+                        color: const Color(0xFFE65100),
+                      ),
                     ),
                   ],
                 );
@@ -1019,8 +1253,18 @@ class _GenerationPageContentState extends State<GenerationPageContent>
 
   String _getMonthName(int month) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
     ];
     if (month < 1 || month > 12) return '';
     return months[month - 1];
@@ -1028,15 +1272,38 @@ class _GenerationPageContentState extends State<GenerationPageContent>
 
   String _getMonthAbbreviation(int month) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     if (month < 1 || month > 12) return '';
     return months[month - 1];
   }
 
   String _formatDateShort(DateTime d) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return '${d.day} ${months[d.month - 1]} ${d.year}';
   }
 }
