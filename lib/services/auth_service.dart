@@ -13,6 +13,8 @@ class AuthService {
     required String email,
     required String password,
     required String phone,
+    String plantCapacity = '',
+    double? investmentAmount,
   }) async {
     try {
       final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
@@ -27,11 +29,28 @@ class AuthService {
         email: email,
         phone: phone,
         role: 'user',
+        plantCapacity: plantCapacity,
         updatedAt: DateTime.now(),
       );
 
       final result = await _dbService.saveUserProfile(newUser);
       if (result.success) {
+        if (investmentAmount != null && investmentAmount > 0) {
+          final units = 250.0; // default estimated monthly units
+          final rate = 8.00;
+          final saving = units * rate;
+          final roiMonths = investmentAmount / saving;
+          final paybackYear = DateTime.now().year + (roiMonths / 12).ceil();
+          
+          await _dbService.saveRoiData({
+            'investment': investmentAmount,
+            'dealRate': 0.0,
+            'monthlyUnits': units,
+            'unitRate': rate,
+            'paybackYear': paybackYear,
+            'paybackPeriod': roiMonths,
+          });
+        }
         return ApiResponse.success(newUser);
       } else {
         return ApiResponse.error(result.error);

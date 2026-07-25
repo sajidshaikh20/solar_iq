@@ -16,7 +16,7 @@ class UserModel {
     required this.phone,
     required this.role,
     this.address = '',
-    this.plantCapacity = '10 kWp',
+    this.plantCapacity = '',
     this.userRoleLabel = 'Solar Plant Owner',
     this.updatedAt,
   });
@@ -29,7 +29,7 @@ class UserModel {
       phone: map['phone'] ?? '',
       address: map['address'] ?? '',
       role: map['role'] ?? 'user',
-      plantCapacity: map['plantCapacity'] ?? '10 kWp',
+      plantCapacity: map['plantCapacity'] ?? '',
       userRoleLabel: map['userRoleLabel'] ?? 'Solar Plant Owner',
       updatedAt: map['updatedAt'] != null 
           ? DateTime.tryParse(map['updatedAt']) 

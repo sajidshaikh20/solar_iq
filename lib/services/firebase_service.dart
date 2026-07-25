@@ -33,7 +33,11 @@ class FirebaseService {
       if (data == null) return;
       try {
         final energy = EnergyData.fromMap(Map<dynamic, dynamic>.from(data as Map));
-        if (energy.units > 0) {
+        final now = DateTime.now();
+        final bool isToday = energy.timestamp.year == now.year &&
+            energy.timestamp.month == now.month &&
+            energy.timestamp.day == now.day;
+        if (energy.units > 0 && isToday) {
           updateDailyReading(energy.units);
         }
       } catch (e) {
@@ -479,22 +483,25 @@ class FirebaseService {
 
   // --- Settings ---
 
-  Stream<double> getElectricityRateStream() {
+  Stream<double> getElectricityRateStream() async* {
     final uid = currentUid ?? 'anonymous';
-    return _dbRef
-        .child('settings')
-        .child(uid)
-        .child('electricity_rate')
-        .onValue
-        .map((event) {
-      final val = event.snapshot.value;
-      if (val == null) return 8.0;
-      if (val is num) return val.toDouble();
-      return double.tryParse(val.toString()) ?? 8.0;
-    }).handleError((error) {
-      dev.log('[GEN-FB] Electricity rate stream error: $error', name: 'FirebaseService');
-      return 8.0;
-    });
+    yield 8.0; // Emit default rate immediately
+    try {
+      final stream = _dbRef
+          .child('settings')
+          .child(uid)
+          .child('electricity_rate')
+          .onValue
+          .map((event) {
+        final val = event.snapshot.value;
+        if (val == null) return 8.0;
+        if (val is num) return val.toDouble();
+        return double.tryParse(val.toString()) ?? 8.0;
+      });
+      yield* stream;
+    } catch (error) {
+      dev.log('[GEN-FB] Electricity rate stream error (using default 8.0): $error', name: 'FirebaseService');
+    }
   }
 
   Future<ApiResponse<void>> saveElectricityRate(double rate) async {

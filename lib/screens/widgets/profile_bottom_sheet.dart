@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:solar_iq/screens/notification_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/colors.dart';
 import '../../core/theme/text_styles.dart';
 import '../../core/theme/app_theme.dart';
@@ -262,7 +263,11 @@ class _ProfileBottomSheetState extends State<ProfileBottomSheet> {
           user?.address.isEmpty ?? true ? 'Not set' : user!.address,
         ),
         const SizedBox(height: 12),
-        _buildInfoTile(Icons.solar_power_outlined, 'Plant Capacity', user?.plantCapacity ?? '10 kWp'),
+        _buildInfoTile(
+          Icons.solar_power_outlined,
+          'Plant Capacity',
+          user?.plantCapacity.isEmpty ?? true ? 'Not set' : user!.plantCapacity,
+        ),
       ],
     );
   }
@@ -462,11 +467,6 @@ class _ProfileBottomSheetState extends State<ProfileBottomSheet> {
         const Color(0xFFE65100),
       ),
       _SettingItem(
-        Icons.lock_outline_rounded,
-        AppStrings.securitySettings,
-        AppColors.primaryEmerald,
-      ),
-      _SettingItem(
         Icons.help_outline_rounded,
         AppStrings.helpSupport,
         AppColors.textTertiary.withOpacity(0.6),
@@ -648,11 +648,34 @@ class _ProfileBottomSheetState extends State<ProfileBottomSheet> {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () {
+      onTap: () async {
         if (item.label == AppStrings.notificationSettings) {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const NotificationScreen()),
           );
+        } else if (item.label == AppStrings.helpSupport) {
+          const phoneNumber = "918102062123";
+          final message = "Hello Solar IQ Team,\n\nI need some help and support with the app.";
+          final encodedMsg = Uri.encodeComponent(message);
+          final whatsappUrl = Uri.parse("https://wa.me/$phoneNumber?text=$encodedMsg");
+          try {
+            if (!await launchUrl(
+              whatsappUrl,
+              mode: LaunchMode.externalApplication,
+            )) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Could not open WhatsApp.')),
+                );
+              }
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Error opening WhatsApp: $e')),
+              );
+            }
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('${item.label} coming soon!'), backgroundColor: AppColors.primaryEmerald),

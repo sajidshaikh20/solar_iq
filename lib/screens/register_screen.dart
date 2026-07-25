@@ -21,6 +21,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _capacityController = TextEditingController();
+  final _investmentController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmController = TextEditingController();
   final _authService = AuthService();
@@ -34,6 +36,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _capacityController.dispose();
+    _investmentController.dispose();
     _passwordController.dispose();
     _confirmController.dispose();
     super.dispose();
@@ -48,6 +52,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
         phone: _phoneController.text.trim(),
+        plantCapacity: _capacityController.text.trim(),
+        investmentAmount: double.tryParse(_investmentController.text.trim()),
       );
 
       if (mounted) {
@@ -242,6 +248,34 @@ class _RegisterScreenState extends State<RegisterScreen> {
               validator: (v) {
                 if (v == null || v.isEmpty) return 'Phone is required';
                 if (v.length < 10) return 'Enter a valid phone number';
+                return null;
+              },
+            ),
+            const SizedBox(height: 18),
+            CommonTextField(
+              label: 'kW Installed',
+              hint: 'e.g. 5.0',
+              controller: _capacityController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              prefixIcon: Icon(Icons.solar_power_outlined,
+                  color: AppColors.textTertiary.withOpacity(0.5), size: 20),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'kW Installed is required';
+                if (double.tryParse(v) == null) return 'Enter a valid number';
+                return null;
+              },
+            ),
+            const SizedBox(height: 18),
+            CommonTextField(
+              label: 'Investment Amount (₹)',
+              hint: 'e.g. 250000',
+              controller: _investmentController,
+              keyboardType: TextInputType.number,
+              prefixIcon: Icon(Icons.currency_rupee_rounded,
+                  color: AppColors.textTertiary.withOpacity(0.5), size: 20),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Investment Amount is required';
+                if (double.tryParse(v) == null) return 'Enter a valid amount';
                 return null;
               },
             ),

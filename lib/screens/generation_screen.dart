@@ -345,41 +345,16 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
-  /// Converts raw `dailyData` (whether cumulative meter readings or daily totals)
-  /// into a map of normalized per-day generated kWh: DateKey -> kWh generated on that day.
+  /// Converts raw `dailyData` into a map of per-day generated kWh.
+  /// Since the database already stores daily totals directly, we return them as-is.
   Map<String, double> _getNormalizedPerDayUnits(Map<String, double> dailyData) {
     if (dailyData.isEmpty) return {};
-
-    final sortedKeys = dailyData.keys.toList()..sort();
-
-    // Determine if the values are cumulative (monotonically non-decreasing)
-    bool isCumulative = sortedKeys.length > 1;
-    for (int i = 1; i < sortedKeys.length; i++) {
-      final prev = dailyData[sortedKeys[i - 1]] ?? 0.0;
-      final curr = dailyData[sortedKeys[i]] ?? 0.0;
-      if (curr < prev && prev > 0) {
-        isCumulative = false;
-        break;
-      }
-    }
-
     final Map<String, double> perDay = {};
-
-    if (isCumulative && sortedKeys.length > 1) {
-      for (int i = 1; i < sortedKeys.length; i++) {
-        final key = sortedKeys[i];
-        final currVal = dailyData[key] ?? 0.0;
-        final prevVal = dailyData[sortedKeys[i - 1]] ?? 0.0;
-        final diff = currVal - prevVal;
-        perDay[key] = diff > 0 ? diff : 0.0;
+    dailyData.forEach((key, val) {
+      if (val >= 0) {
+        perDay[key] = val;
       }
-      perDay[sortedKeys[0]] = 0.0;
-    } else {
-      dailyData.forEach((key, val) {
-        perDay[key] = val > 0 ? val : 0.0;
-      });
-    }
-
+    });
     return perDay;
   }
 
@@ -391,11 +366,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     final todayKey = _formatDateKey(now);
     final perDayMap = _getNormalizedPerDayUnits(dailyData);
 
-    if (perDayMap.containsKey(todayKey) && perDayMap[todayKey]! > 0) {
-      return perDayMap[todayKey]!;
-    }
-
-    // Check if live stream has a reading recorded TODAY
+    // Prefer live energy units if they are recorded today
     if (liveEnergy != null && liveEnergy.units > 0) {
       final ts = liveEnergy.timestamp;
       final bool isLiveToday =
@@ -403,6 +374,10 @@ class _GenerationPageContentState extends State<GenerationPageContent>
       if (isLiveToday) {
         return liveEnergy.units;
       }
+    }
+
+    if (perDayMap.containsKey(todayKey) && perDayMap[todayKey]! > 0) {
+      return perDayMap[todayKey]!;
     }
 
     // New day starting -> 0 progress until generation arrives
@@ -458,12 +433,22 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     final perDayMap = _getNormalizedPerDayUnits(dailyData);
     double total = 0.0;
 
-    final int days = range.end.difference(range.start).inDays + 1;
-    for (int i = 0; i < days; i++) {
-      final d = range.start.add(Duration(days: i));
-      final key = _formatDateKey(d);
-      total += perDayMap[key] ?? 0.0;
-    }
+    final startCompare = DateTime(range.start.year, range.start.month, range.start.day);
+    final endCompare = DateTime(range.end.year, range.end.month, range.end.day);
+
+    perDayMap.forEach((key, val) {
+      final parts = key.split('-');
+      if (parts.length == 3) {
+        final y = int.tryParse(parts[0]) ?? 0;
+        final m = int.tryParse(parts[1]) ?? 0;
+        final d = int.tryParse(parts[2]) ?? 0;
+        final date = DateTime(y, m, d);
+        if ((date.isAfter(startCompare) || date.isAtSameMomentAs(startCompare)) &&
+            (date.isBefore(endCompare) || date.isAtSameMomentAs(endCompare))) {
+          total += val;
+        }
+      }
+    });
 
     return total;
   }
