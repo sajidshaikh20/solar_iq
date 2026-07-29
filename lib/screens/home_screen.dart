@@ -28,7 +28,7 @@ class HomePageContent extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildWelcomeHeader(),
-          const SizedBox(height: 20),
+
           _buildTotalSavingsCard(fbService),
           const SizedBox(height: 16),
         //  _buildDynamicSavingsCards(fbService),
@@ -59,96 +59,58 @@ class HomePageContent extends StatelessWidget {
   }
 
   Widget _buildWelcomeHeader() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primaryMint, AppColors.primaryEmerald],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return Stack(
+      children: [
+        Image.asset(
+          'assets/icons/ic_home_banner.png',
+          width: double.infinity,
+          fit: BoxFit.cover,
         ),
-        borderRadius: BorderRadius.circular(AppTheme.radiusXLarge),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryMint.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 6),
+        Positioned(
+          bottom: 70,
+          left: 20, // <-- right ki jagah left
+          child: StreamBuilder<EnergyData>(
+            stream: FirebaseService().getEnergyDataStream(),
+            builder: (context, snapshot) {
+              final data = snapshot.data;
+              return _buildLivePowerBadge(
+                '${data?.power.toStringAsFixed(1) ?? '0'}W Live',
+              );
+            },
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Welcome back,',
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    color: AppColors.secondaryNavy.withOpacity(0.7),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  userName ?? 'Solar User',
-                  style: AppTextStyles.headingLarge.copyWith(
-                    color: AppColors.secondaryNavy,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                StreamBuilder<EnergyData>(
-                  stream: FirebaseService().getEnergyDataStream(),
-                  builder: (context, snapshot) {
-                    final data = snapshot.data;
-                    return Row(
-                      children: [
-                        _buildMiniStat(
-                          Icons.bolt_rounded,
-                          '${data?.power.toStringAsFixed(1) ?? '0'}W Live Power',
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.25),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.solar_power_rounded,
-              color: AppColors.secondaryNavy,
-              size: 28,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
-
-  Widget _buildMiniStat(IconData icon, String value) {
+  Widget _buildLivePowerBadge(String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.secondaryNavy.withOpacity(0.85),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AppColors.primaryMint.withOpacity(0.4),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: AppColors.secondaryNavy, size: 14),
-          const SizedBox(width: 4),
+          const _PulsingDot(),
+          const SizedBox(width: 6),
           Text(
             value,
             style: AppTextStyles.caption.copyWith(
-              color: AppColors.secondaryNavy,
-              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 11,
             ),
           ),
         ],
@@ -600,6 +562,56 @@ class _MenuCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PulsingDot extends StatefulWidget {
+  const _PulsingDot();
+
+  @override
+  State<_PulsingDot> createState() => _PulsingDotState();
+}
+
+class _PulsingDotState extends State<_PulsingDot> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: AppColors.primaryMint,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primaryMint.withOpacity(0.8 * _controller.value),
+                blurRadius: 6 * _controller.value,
+                spreadRadius: 3 * _controller.value,
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
