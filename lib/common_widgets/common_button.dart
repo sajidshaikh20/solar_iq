@@ -44,6 +44,7 @@ class CommonButton extends StatelessWidget {
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(AppTheme.radiusLarge),
             ),
@@ -62,9 +63,16 @@ class CommonButton extends StatelessWidget {
                   children: [
                     if (icon != null) ...[
                       Icon(icon, size: 18, color: Colors.white),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                     ],
-                    Text(label, style: AppTextStyles.labelLarge),
+                    Flexible(
+                      child: Text(
+                        label,
+                        style: AppTextStyles.labelLarge,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
                   ],
                 ),
         ),

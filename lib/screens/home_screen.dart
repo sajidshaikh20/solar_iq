@@ -23,14 +23,12 @@ class HomePageContent extends StatelessWidget {
     final fbService = FirebaseService();
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildWelcomeHeader(),
-
           _buildTotalSavingsCard(fbService),
-          const SizedBox(height: 16),
         //  _buildDynamicSavingsCards(fbService),
           const SizedBox(height: 24),
           Text(

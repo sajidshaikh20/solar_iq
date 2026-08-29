@@ -83,6 +83,18 @@ class AuthService {
     }
   }
 
+  // Reset Password / Forgot Password
+  Future<ApiResponse<void>> resetPassword({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+      return ApiResponse.success(null);
+    } on FirebaseAuthException catch (e) {
+      return ApiResponse.error(e.message ?? "Password reset failed");
+    } catch (e) {
+      return ApiResponse.error(e.toString());
+    }
+  }
+
   // Get current user profile
   Future<ApiResponse<UserModel>> getCurrentUserProfile() async {
     return await _dbService.getUserProfile();

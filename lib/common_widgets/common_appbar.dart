@@ -20,7 +20,7 @@ class CommonAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -37,12 +37,12 @@ class CommonAppBar extends StatelessWidget {
                         borderRadius: BorderRadius.circular(
                           AppTheme.radiusMedium,
                         ),
-                        color: Colors.white.withOpacity(0.06),
+                        color: Colors.white,
                         border: Border.all(color: AppColors.borderColor),
                       ),
                       child: const Icon(
                         Icons.arrow_back_ios_new_rounded,
-                        color: Colors.black,
+                        color: AppColors.textPrimary,
                         size: 16,
                       ),
                     ),
@@ -51,6 +51,7 @@ class CommonAppBar extends StatelessWidget {
                 ],
                 Expanded(
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ShaderMask(
@@ -65,11 +66,12 @@ class CommonAppBar extends StatelessWidget {
                         ),
                       ),
                       if (subtitle != null) ...[
-                        const SizedBox(height: 2),
+                        const SizedBox(height: 1),
                         Text(
                           subtitle!,
                           style: AppTextStyles.bodyMedium.copyWith(
-                            color: Colors.white.withOpacity(0.45),
+                            color: AppColors.textSecondary.withOpacity(0.85),
+                            fontWeight: FontWeight.w500,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -91,12 +93,12 @@ class CommonAppBar extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(AppTheme.radiusMedium),
-                color: Colors.white.withOpacity(0.06),
+                color: Colors.white,
                 border: Border.all(color: AppColors.borderColor),
               ),
               child: Icon(
                 Icons.notifications_outlined,
-                color: Colors.white.withOpacity(0.65),
+                color: AppColors.textPrimary.withOpacity(0.65),
                 size: 20,
               ),
             ),
