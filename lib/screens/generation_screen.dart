@@ -346,15 +346,30 @@ class _GenerationPageContentState extends State<GenerationPageContent>
   }
 
   /// Converts raw `dailyData` into a map of per-day generated kWh.
-  /// Since the database already stores daily totals directly, we return them as-is.
+  /// If readings are cumulative meter totals, it calculates the per-day delta.
   Map<String, double> _getNormalizedPerDayUnits(Map<String, double> dailyData) {
     if (dailyData.isEmpty) return {};
+    
+    final sortedKeys = dailyData.keys.toList()..sort();
     final Map<String, double> perDay = {};
-    dailyData.forEach((key, val) {
-      if (val >= 0) {
+
+    for (int i = 0; i < sortedKeys.length; i++) {
+      final key = sortedKeys[i];
+      final val = dailyData[key] ?? 0.0;
+
+      if (i == 0) {
         perDay[key] = val;
+      } else {
+        final prevKey = sortedKeys[i - 1];
+        final prevVal = dailyData[prevKey] ?? 0.0;
+
+        if (val >= prevVal && prevVal > 0) {
+          perDay[key] = val - prevVal;
+        } else {
+          perDay[key] = val;
+        }
       }
-    });
+    }
     return perDay;
   }
 
@@ -366,18 +381,26 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     final todayKey = _formatDateKey(now);
     final perDayMap = _getNormalizedPerDayUnits(dailyData);
 
-    // Prefer live energy units if they are recorded today
+    if (perDayMap.containsKey(todayKey)) {
+      return perDayMap[todayKey]!;
+    }
+
+    // Check live energy if recorded today
     if (liveEnergy != null && liveEnergy.units > 0) {
       final ts = liveEnergy.timestamp;
       final bool isLiveToday =
           ts.year == now.year && ts.month == now.month && ts.day == now.day;
       if (isLiveToday) {
+        double lastCumulative = 0.0;
+        if (dailyData.isNotEmpty) {
+          final sortedKeys = dailyData.keys.toList()..sort();
+          lastCumulative = dailyData[sortedKeys.last] ?? 0.0;
+        }
+        if (lastCumulative > 0 && liveEnergy.units >= lastCumulative) {
+          return liveEnergy.units - lastCumulative;
+        }
         return liveEnergy.units;
       }
-    }
-
-    if (perDayMap.containsKey(todayKey) && perDayMap[todayKey]! > 0) {
-      return perDayMap[todayKey]!;
     }
 
     // New day starting -> 0 progress until generation arrives

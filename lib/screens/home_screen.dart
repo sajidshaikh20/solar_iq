@@ -126,30 +126,57 @@ class HomePageContent extends StatelessWidget {
           stream: fbService.getGenerationSummaryStream(),
           builder: (context, genSnapshot) {
             final genData = genSnapshot.data ?? GenerationSummary();
-            final double totalLifetimeUnits = genData.total;
 
-            return StreamBuilder<Map<dynamic, dynamic>?>(
-              stream: fbService.getRoiDataStream(),
-              builder: (context, roiSnapshot) {
-                final roiData = roiSnapshot.data;
+            return StreamBuilder<Map<String, double>>(
+              stream: fbService.getDailyGenerationStream(),
+              builder: (context, dailySnapshot) {
+                final dailyData = dailySnapshot.data ?? const <String, double>{};
 
-                double investment = 0.0;
-                double storedRate = unitRate;
-                int? paybackYear;
-                double paybackPeriodMonths = 0.0;
+                return StreamBuilder<EnergyData>(
+                  stream: fbService.getEnergyDataStream(),
+                  builder: (context, energySnapshot) {
+                    final liveEnergy = energySnapshot.data;
 
-                if (roiData != null) {
-                  investment = (roiData['investment'] ?? 0).toDouble();
-                  if (roiData['unitRate'] != null) {
-                    storedRate = (roiData['unitRate'] as num).toDouble();
-                  }
-                  if (roiData['paybackYear'] != null) {
-                    paybackYear = (roiData['paybackYear'] as num).toInt();
-                  }
-                  if (roiData['paybackPeriod'] != null) {
-                    paybackPeriodMonths = (roiData['paybackPeriod'] as num).toDouble();
-                  }
-                }
+                    double totalLifetimeUnits = genData.total;
+
+                    // Fallback if summary.total is 0 or unpopulated in Firebase
+                    if (totalLifetimeUnits <= 0) {
+                      if (dailyData.isNotEmpty) {
+                        double maxDaily = 0.0;
+                        double sumDaily = 0.0;
+                        dailyData.forEach((_, val) {
+                          if (val > maxDaily) maxDaily = val;
+                          sumDaily += val;
+                        });
+                        totalLifetimeUnits = maxDaily > 0 ? maxDaily : sumDaily;
+                      }
+                      if (totalLifetimeUnits <= 0 && liveEnergy != null && liveEnergy.units > 0) {
+                        totalLifetimeUnits = liveEnergy.units;
+                      }
+                    }
+
+                    return StreamBuilder<Map<dynamic, dynamic>?>(
+                      stream: fbService.getRoiDataStream(),
+                      builder: (context, roiSnapshot) {
+                        final roiData = roiSnapshot.data;
+
+                        double investment = 0.0;
+                        double storedRate = unitRate;
+                        int? paybackYear;
+                        double paybackPeriodMonths = 0.0;
+
+                        if (roiData != null) {
+                          investment = (roiData['investment'] ?? 0).toDouble();
+                          if (roiData['unitRate'] != null) {
+                            storedRate = (roiData['unitRate'] as num).toDouble();
+                          }
+                          if (roiData['paybackYear'] != null) {
+                            paybackYear = (roiData['paybackYear'] as num).toInt();
+                          }
+                          if (roiData['paybackPeriod'] != null) {
+                            paybackPeriodMonths = (roiData['paybackPeriod'] as num).toDouble();
+                          }
+                        }
 
                 final double totalSavingsTillNow = totalLifetimeUnits * storedRate;
                 double progress = 0.0;
@@ -295,6 +322,10 @@ class HomePageContent extends StatelessWidget {
                       ),
                     ],
                   ),
+                );
+                      },
+                    );
+                  },
                 );
               },
             );

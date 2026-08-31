@@ -92,16 +92,8 @@ class FirebaseService {
 
       GenerationSummary summary = GenerationSummary.fromMap(data as Map);
 
-      // --- Virtual Rollover for UI ---
-      // This ensures that when the app is opened on a new day,
-      // "Today" shows 0 and "Yesterday" shows previous day's total,
-      // even if the database hasn't been updated yet.
-      //
-      // IMPORTANT: We never discard valid Firebase values for `yesterday` /
-      // `thisMonth`. We only adjust `today` (and shift today -> yesterday
-      // when the last update happened exactly yesterday).
+      // --- Virtual & Database Rollover ---
       if (summary.lastUpdate == null) {
-        // No timestamp metadata — trust whatever is in Firebase as-is.
         return summary;
       }
 
@@ -113,8 +105,18 @@ class FirebaseService {
           now.day != last.day;
 
       if (!isNewDay) {
-        // Same day — return Firebase data unchanged.
-        return summary;
+        // If stored summary.today contains cumulative meter reading (includes yesterday), normalize it
+        double normalizedToday = summary.today;
+        if (summary.yesterday > 0 && summary.today >= summary.yesterday) {
+          normalizedToday = summary.today - summary.yesterday;
+        }
+        return GenerationSummary(
+          today: normalizedToday,
+          yesterday: summary.yesterday,
+          thisMonth: summary.thisMonth,
+          total: summary.total,
+          lastUpdate: summary.lastUpdate,
+        );
       }
 
       // It's a new day relative to the last DB write.
@@ -124,26 +126,34 @@ class FirebaseService {
               last.month == yesterdayDate.month &&
               last.day == yesterdayDate.day;
 
-      // If the most recent write was yesterday, the value sitting in
-      // `summary.today` is actually yesterday's accumulated total — promote it.
-      // Otherwise keep whatever Firebase has stored under `yesterday` (do NOT
-      // wipe it to 0; the device may simply not have pushed an update today).
       final double yesterdayVal =
           wasLastUpdateYesterday ? summary.today : summary.yesterday;
 
-      // Same month? keep stored value. Different month? `thisMonth` is stale,
-      // so reset to 0 until a new entry rolls in for the current month.
       final bool isSameMonth =
           now.year == last.year && now.month == last.month;
       final double thisMonthVal = isSameMonth ? summary.thisMonth : 0.0;
 
-      return GenerationSummary(
+      final updatedSummary = GenerationSummary(
         today: 0.0,
         yesterday: yesterdayVal,
         thisMonth: thisMonthVal,
         total: summary.total,
-        lastUpdate: summary.lastUpdate,
+        lastUpdate: now,
       );
+
+      // Sync rollover state to Firebase Realtime Database
+      if (uid != 'anonymous') {
+        _dbRef
+            .child('generation')
+            .child('summaries')
+            .child(uid)
+            .set(updatedSummary.toMap())
+            .catchError((e) {
+          dev.log('[GEN-FB] Rollover summary save error: $e', name: 'FirebaseService');
+        });
+      }
+
+      return updatedSummary;
     });
   }
 
@@ -200,7 +210,7 @@ class FirebaseService {
                                            lastUpdate.month == yesterdayDate.month && 
                                            lastUpdate.day == yesterdayDate.day;
               
-              yesterday = wasLastUpdateYesterday ? today : 0.0;
+              yesterday = wasLastUpdateYesterday ? today : yesterday;
               today = entry.units;
             } else {
               today += entry.units;
@@ -359,13 +369,107 @@ class FirebaseService {
     });
   }
 
-  Future<void> updateDailyReading(double units) async {
+  Future<void> updateDailyReading(double rawUnits) async {
     final uid = currentUid;
     if (uid == null) return;
     final now = DateTime.now();
     final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     try {
-      await _dbRef.child('generation').child('daily').child(uid).child(dateStr).set(units);
+      final summaryRef = _dbRef.child('generation').child('summaries').child(uid);
+      double calculatedTodayUnits = rawUnits;
+
+      await summaryRef.runTransaction((Object? post) {
+        if (post == null) {
+          calculatedTodayUnits = rawUnits;
+          return Transaction.success(GenerationSummary(
+            today: rawUnits,
+            yesterday: 0.0,
+            thisMonth: rawUnits,
+            total: rawUnits,
+            lastUpdate: now,
+          ).toMap());
+        }
+
+        final data = Map<String, dynamic>.from(post as Map);
+        final lastUpdateStr = data['lastUpdate'] as String?;
+        DateTime? lastUpdate = lastUpdateStr != null ? DateTime.tryParse(lastUpdateStr) : null;
+
+        double prevToday = (data['today'] ?? 0.0).toDouble();
+        double yesterday = (data['yesterday'] ?? 0.0).toDouble();
+        double thisMonth = (data['thisMonth'] ?? 0.0).toDouble();
+        double total = (data['total'] ?? 0.0).toDouble();
+        double cumulativeBaseline = (data['cumulativeBaseline'] ?? 0.0).toDouble();
+
+        double todayUnits = rawUnits;
+
+        if (lastUpdate != null) {
+          bool isNewDay = now.year != lastUpdate.year ||
+              now.month != lastUpdate.month ||
+              now.day != lastUpdate.day;
+
+          bool isNewMonth = now.year != lastUpdate.year ||
+              now.month != lastUpdate.month;
+
+          if (isNewDay) {
+            DateTime yesterdayDate = now.subtract(const Duration(days: 1));
+            bool wasLastUpdateYesterday = lastUpdate.year == yesterdayDate.year &&
+                lastUpdate.month == yesterdayDate.month &&
+                lastUpdate.day == yesterdayDate.day;
+
+            yesterday = wasLastUpdateYesterday ? prevToday : yesterday;
+
+            // If rawUnits includes yesterday's total, update baseline
+            if (rawUnits >= prevToday && prevToday > 0) {
+              cumulativeBaseline = (cumulativeBaseline > 0) ? (cumulativeBaseline + prevToday) : prevToday;
+            } else {
+              cumulativeBaseline = 0.0;
+            }
+
+            if (cumulativeBaseline > 0 && rawUnits >= cumulativeBaseline) {
+              todayUnits = rawUnits - cumulativeBaseline;
+            } else {
+              todayUnits = rawUnits;
+            }
+
+            double delta = todayUnits;
+            thisMonth = isNewMonth ? todayUnits : (thisMonth + delta);
+            total += delta;
+          } else {
+            if (cumulativeBaseline > 0 && rawUnits >= cumulativeBaseline) {
+              todayUnits = rawUnits - cumulativeBaseline;
+            } else {
+              todayUnits = rawUnits;
+            }
+
+            double delta = todayUnits - prevToday;
+            if (delta > 0) {
+              thisMonth += delta;
+              total += delta;
+            }
+          }
+        } else {
+          todayUnits = rawUnits;
+          thisMonth = rawUnits;
+          total += rawUnits;
+        }
+
+        calculatedTodayUnits = todayUnits;
+
+        final summaryMap = GenerationSummary(
+          today: todayUnits,
+          yesterday: yesterday,
+          thisMonth: thisMonth,
+          total: total,
+          lastUpdate: now,
+        ).toMap();
+
+        summaryMap['cumulativeBaseline'] = cumulativeBaseline;
+
+        return Transaction.success(summaryMap);
+      });
+
+      // Save calculated today's generation to daily node
+      await _dbRef.child('generation').child('daily').child(uid).child(dateStr).set(calculatedTodayUnits);
     } catch (e) {
       dev.log('[GEN-FB] Error saving daily reading: $e', name: 'FirebaseService');
     }
