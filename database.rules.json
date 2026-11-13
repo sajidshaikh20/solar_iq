@@ -1,0 +1,60 @@
+{
+  "rules": {
+    "energy": {
+      ".read": "auth != null",
+      ".write": "auth.uid === 'Wkw2W1meQKVSm79ADNV7MckecId2'"
+    },
+    "board1": {
+      "outputs": {
+        "digital": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      }
+    },
+    "solar_app": {
+      "users": {
+        "$uid": {
+          ".read": "$uid === auth.uid",
+          ".write": "$uid === auth.uid"
+        }
+      },
+      "notifications": {
+        "$uid": {
+          ".read": "$uid === auth.uid",
+          ".write": "$uid === auth.uid"
+        }
+      },
+      "quotations": {
+        "$uid": {
+          ".read": "$uid === auth.uid",
+          ".write": "$uid === auth.uid"
+        }
+      },
+      "buttons": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "quotation_list": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "queries": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "settings": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "generation": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      },
+      "roi": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    }
+  }
+}
