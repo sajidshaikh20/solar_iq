@@ -13,14 +13,20 @@ class GenerationSummary {
     this.lastUpdate,
   });
 
+  static double _toDouble(dynamic val) {
+    if (val == null) return 0.0;
+    if (val is num) return val.toDouble();
+    return double.tryParse(val.toString()) ?? 0.0;
+  }
+
   factory GenerationSummary.fromMap(Map<dynamic, dynamic> map) {
     return GenerationSummary(
-      today: (map['today'] ?? 0.0).toDouble(),
-      yesterday: (map['yesterday'] ?? 0.0).toDouble(),
-      thisMonth: (map['thisMonth'] ?? 0.0).toDouble(),
-      total: (map['total'] ?? 0.0).toDouble(),
+      today: _toDouble(map['today']),
+      yesterday: _toDouble(map['yesterday']),
+      thisMonth: _toDouble(map['thisMonth']),
+      total: _toDouble(map['total']),
       lastUpdate: map['lastUpdate'] != null 
-          ? DateTime.tryParse(map['lastUpdate']) 
+          ? DateTime.tryParse(map['lastUpdate'].toString()) 
           : null,
     );
   }

@@ -10,6 +10,7 @@ import '../common_widgets/common_card.dart';
 import '../services/firebase_service.dart';
 import '../models/generation_log.dart';
 import '../models/energy_data.dart';
+import '../models/generation_summary.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 class GenerationPageContent extends StatefulWidget {
@@ -30,6 +31,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
   late final Stream<List<GenerationLogEntry>> _logsStream;
   late final Stream<double> _rateStream;
   late final Stream<Map<String, double>> _dailyStream;
+  late final Stream<GenerationSummary> _summaryStream;
 
   DateTimeRange? _customDateRange;
 
@@ -49,6 +51,7 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     _logsStream = _fbService.getLogsStream(limit: 500).asBroadcastStream();
     _rateStream = _fbService.getElectricityRateStream().asBroadcastStream();
     _dailyStream = _fbService.getDailyGenerationStream().asBroadcastStream();
+    _summaryStream = _fbService.getGenerationSummaryStream().asBroadcastStream();
 
     final now = DateTime.now();
     _customDateRange = DateTimeRange(
@@ -88,70 +91,78 @@ class _GenerationPageContentState extends State<GenerationPageContent>
                 child: _buildTabBar(),
               ),
               Expanded(
-                child: StreamBuilder<EnergyData>(
-                  stream: _energyStream,
-                  builder: (context, energySnapshot) {
-                    final liveEnergy = energySnapshot.data;
+                child: StreamBuilder<GenerationSummary>(
+                  stream: _summaryStream,
+                  builder: (context, summarySnapshot) {
+                    final summary = summarySnapshot.data;
 
-                    return StreamBuilder<Map<String, double>>(
-                      stream: _dailyStream,
-                      builder: (context, dailySnapshot) {
-                        final dailyData =
-                            dailySnapshot.data ?? const <String, double>{};
+                    return StreamBuilder<EnergyData>(
+                      stream: _energyStream,
+                      builder: (context, energySnapshot) {
+                        final liveEnergy = energySnapshot.data;
 
-                        final today = _todayFromDaily(dailyData, liveEnergy);
-                        final yesterday = _yesterdayFromDaily(dailyData);
-                        final thisMonth = _thisMonthFromDaily(dailyData);
-                        final lastMonth = _lastMonthFromDaily(dailyData);
-                        final total = _totalFromDaily(dailyData);
+                        return StreamBuilder<Map<String, double>>(
+                          stream: _dailyStream,
+                          builder: (context, dailySnapshot) {
+                            final dailyData =
+                                dailySnapshot.data ?? const <String, double>{};
 
-                        final customUnits = _customUnitsFromDaily(
-                          dailyData,
-                          _customDateRange,
-                        );
+                            final today = _todayFromDaily(dailyData, liveEnergy, summary);
+                            final yesterday = _yesterdayFromDaily(dailyData, summary);
+                            final thisMonth = _thisMonthFromDaily(dailyData, summary, liveEnergy: liveEnergy);
+                            final lastMonth = _lastMonthFromDaily(dailyData);
+                            final total = _totalFromDaily(dailyData, summary, liveEnergy);
 
-                        return StreamBuilder<List<GenerationLogEntry>>(
-                          stream: _logsStream,
-                          builder: (context, logsSnapshot) {
-                            final logs =
-                                logsSnapshot.data ??
-                                const <GenerationLogEntry>[];
+                            final customUnits = _customUnitsFromDaily(
+                              dailyData,
+                              _customDateRange,
+                              liveEnergy: liveEnergy,
+                            );
 
-                            return SingleChildScrollView(
-                              padding: const EdgeInsets.fromLTRB(
-                                AppSpacing.lg,
-                                AppSpacing.lg,
-                                AppSpacing.lg,
-                                0,
-                              ),
-                              child: Column(
-                                children: [
-                                  _buildLiveStatus(),
-                                  const SizedBox(height: AppSpacing.lg),
-                                  _buildCustomDateSelector(),
-                                  _buildMainStat(
-                                    today,
-                                    yesterday,
-                                    thisMonth,
-                                    total,
-                                    rate,
-                                    customUnits,
+                            return StreamBuilder<List<GenerationLogEntry>>(
+                              stream: _logsStream,
+                              builder: (context, logsSnapshot) {
+                                final logs =
+                                    logsSnapshot.data ??
+                                    const <GenerationLogEntry>[];
+
+                                return SingleChildScrollView(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    AppSpacing.lg,
+                                    AppSpacing.lg,
+                                    AppSpacing.lg,
+                                    0,
                                   ),
-                                  const SizedBox(height: AppSpacing.lg),
-                                  _buildTrendGraph(logs, dailyData, rate),
-                                  const SizedBox(height: AppSpacing.lg),
-                                  _buildMonthlyComparison(
-                                    thisMonth,
-                                    lastMonth,
-                                    rate,
+                                  child: Column(
+                                    children: [
+                                      _buildLiveStatus(),
+                                      const SizedBox(height: AppSpacing.lg),
+                                      _buildCustomDateSelector(),
+                                      _buildMainStat(
+                                        today,
+                                        yesterday,
+                                        thisMonth,
+                                        total,
+                                        rate,
+                                        customUnits,
+                                      ),
+                                      const SizedBox(height: AppSpacing.lg),
+                                      _buildTrendGraph(logs, dailyData, rate, today, yesterday),
+                                      const SizedBox(height: AppSpacing.lg),
+                                      _buildMonthlyComparison(
+                                        thisMonth,
+                                        lastMonth,
+                                        rate,
+                                      ),
+                                      const SizedBox(height: AppSpacing.lg),
+                                      _buildEnvironmentalImpact(total),
+                                      const SizedBox(height: AppSpacing.lg),
+                                      _buildDailySavingsTable(dailyData, rate),
+                                      const SizedBox(height: 120),
+                                    ],
                                   ),
-                                  const SizedBox(height: AppSpacing.lg),
-                                  _buildEnvironmentalImpact(total),
-                                  const SizedBox(height: AppSpacing.lg),
-                                  _buildDailySavingsTable(dailyData, rate),
-                                  const SizedBox(height: 120),
-                                ],
-                              ),
+                                );
+                              },
                             );
                           },
                         );
@@ -345,78 +356,121 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
   }
 
-  /// Converts raw `dailyData` into a map of per-day generated kWh.
-  /// If readings are cumulative meter totals, it calculates the per-day delta.
-  Map<String, double> _getNormalizedPerDayUnits(Map<String, double> dailyData) {
-    if (dailyData.isEmpty) return {};
-    
-    final sortedKeys = dailyData.keys.toList()..sort();
-    final Map<String, double> perDay = {};
+  /// Converts raw `dailyData` (which stores cumulative meter readings) into a map of per-day generated kWh.
+  Map<String, double> _getNormalizedPerDayUnits(
+    Map<String, double> dailyData, {
+    EnergyData? liveEnergy,
+  }) {
+    if (dailyData.isEmpty && (liveEnergy == null || liveEnergy.units <= 0)) return {};
 
-    for (int i = 0; i < sortedKeys.length; i++) {
-      final key = sortedKeys[i];
-      final val = dailyData[key] ?? 0.0;
+    final Map<String, double> merged = Map<String, double>.from(dailyData);
+    final now = DateTime.now();
+    final todayKey = _formatDateKey(now);
 
-      if (i == 0) {
-        perDay[key] = val;
-      } else {
-        final prevKey = sortedKeys[i - 1];
-        final prevVal = dailyData[prevKey] ?? 0.0;
-
-        if (val >= prevVal && prevVal > 0) {
-          perDay[key] = val - prevVal;
-        } else {
-          perDay[key] = val;
-        }
+    // If live energy has the latest meter reading, merge it for today
+    if (liveEnergy != null && liveEnergy.units > 0) {
+      final currentToday = merged[todayKey] ?? 0.0;
+      if (currentToday == 0.0 || liveEnergy.units > currentToday) {
+        merged[todayKey] = liveEnergy.units;
       }
     }
+
+    final sortedKeys = merged.keys.toList()..sort();
+    final Map<String, double> perDay = {};
+
+    // Check if data is cumulative meter readings (e.g. values > 35 or increasing)
+    bool isCumulative = false;
+    for (final val in merged.values) {
+      if (val > 35.0) {
+        isCumulative = true;
+        break;
+      }
+    }
+    if (!isCumulative && sortedKeys.length > 2) {
+      int incCount = 0;
+      for (int i = 1; i < sortedKeys.length; i++) {
+        if ((merged[sortedKeys[i]] ?? 0.0) >= (merged[sortedKeys[i - 1]] ?? 0.0)) {
+          incCount++;
+        }
+      }
+      if (incCount >= sortedKeys.length - 1) {
+        isCumulative = true;
+      }
+    }
+
+    if (isCumulative) {
+      for (int i = 0; i < sortedKeys.length; i++) {
+        final key = sortedKeys[i];
+        final val = merged[key] ?? 0.0;
+        if (i == 0) {
+          perDay[key] = val <= 35.0 ? val : 0.0;
+        } else {
+          final prevKey = sortedKeys[i - 1];
+          final prevVal = merged[prevKey] ?? 0.0;
+          if (val >= prevVal && prevVal > 0) {
+            perDay[key] = val - prevVal;
+          } else if (val > 0 && val <= 35.0) {
+            perDay[key] = val;
+          } else {
+            perDay[key] = 0.0;
+          }
+        }
+      }
+    } else {
+      merged.forEach((key, val) {
+        if (val >= 0) perDay[key] = val;
+      });
+    }
+
     return perDay;
   }
 
   double _todayFromDaily(
     Map<String, double> dailyData,
     EnergyData? liveEnergy,
+    GenerationSummary? summary,
   ) {
     final now = DateTime.now();
     final todayKey = _formatDateKey(now);
-    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+    final perDayMap = _getNormalizedPerDayUnits(dailyData, liveEnergy: liveEnergy);
 
-    if (perDayMap.containsKey(todayKey)) {
+    if (perDayMap.containsKey(todayKey) && perDayMap[todayKey]! > 0) {
       return perDayMap[todayKey]!;
     }
 
-    // Check live energy if recorded today
-    if (liveEnergy != null && liveEnergy.units > 0) {
-      final ts = liveEnergy.timestamp;
-      final bool isLiveToday =
-          ts.year == now.year && ts.month == now.month && ts.day == now.day;
-      if (isLiveToday) {
-        double lastCumulative = 0.0;
-        if (dailyData.isNotEmpty) {
-          final sortedKeys = dailyData.keys.toList()..sort();
-          lastCumulative = dailyData[sortedKeys.last] ?? 0.0;
-        }
-        if (lastCumulative > 0 && liveEnergy.units >= lastCumulative) {
-          return liveEnergy.units - lastCumulative;
-        }
-        return liveEnergy.units;
-      }
+    if (summary != null && summary.today > 0 && summary.today < (summary.total > 0 ? summary.total : double.infinity)) {
+      return summary.today;
     }
 
-    // New day starting -> 0 progress until generation arrives
     return 0.0;
   }
 
-  double _yesterdayFromDaily(Map<String, double> dailyData) {
+  double _yesterdayFromDaily(
+    Map<String, double> dailyData,
+    GenerationSummary? summary,
+  ) {
     final yesterday = DateTime.now().subtract(const Duration(days: 1));
     final yesterdayKey = _formatDateKey(yesterday);
     final perDayMap = _getNormalizedPerDayUnits(dailyData);
-    return perDayMap[yesterdayKey] ?? 0.0;
+
+    if (perDayMap.containsKey(yesterdayKey) && perDayMap[yesterdayKey]! > 0) {
+      return perDayMap[yesterdayKey]!;
+    }
+
+    if (summary != null && summary.yesterday > 0) {
+      return (summary.total > 35.0 && summary.yesterday >= summary.total) ? 0.0 : summary.yesterday;
+    }
+
+    return 0.0;
   }
 
-  double _thisMonthFromDaily(Map<String, double> dailyData) {
+  double _thisMonthFromDaily(
+    Map<String, double> dailyData,
+    GenerationSummary? summary, {
+    EnergyData? liveEnergy,
+  }) {
     final now = DateTime.now();
-    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+    final perDayMap = _getNormalizedPerDayUnits(dailyData, liveEnergy: liveEnergy);
     double monthTotal = 0.0;
 
     final daysInMonth = DateTime(now.year, now.month + 1, 0).day;
@@ -425,10 +479,20 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     for (int day = 1; day <= endDay; day++) {
       final date = DateTime(now.year, now.month, day);
       final key = _formatDateKey(date);
-      monthTotal += perDayMap[key] ?? 0.0;
+      final val = perDayMap[key] ?? 0.0;
+      monthTotal += val;
     }
 
-    return monthTotal;
+    if (monthTotal > 0) return monthTotal;
+
+    if (summary != null && summary.thisMonth > 0) {
+      if (summary.total > 35.0 && summary.thisMonth >= summary.total && summary.today <= 0) {
+        return summary.today;
+      }
+      return summary.thisMonth;
+    }
+
+    return 0.0;
   }
 
   double _lastMonthFromDaily(Map<String, double> dailyData) {
@@ -450,10 +514,11 @@ class _GenerationPageContentState extends State<GenerationPageContent>
 
   double _customUnitsFromDaily(
     Map<String, double> dailyData,
-    DateTimeRange? range,
-  ) {
+    DateTimeRange? range, {
+    EnergyData? liveEnergy,
+  }) {
     if (range == null) return 0.0;
-    final perDayMap = _getNormalizedPerDayUnits(dailyData);
+    final perDayMap = _getNormalizedPerDayUnits(dailyData, liveEnergy: liveEnergy);
     double total = 0.0;
 
     final startCompare = DateTime(range.start.year, range.start.month, range.start.day);
@@ -476,12 +541,23 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     return total;
   }
 
-  double _totalFromDaily(Map<String, double> dailyData) {
-    if (dailyData.isEmpty) return 0.0;
-    final perDayMap = _getNormalizedPerDayUnits(dailyData);
-    double sum = 0.0;
-    perDayMap.forEach((_, val) => sum += val);
-    return sum;
+  double _totalFromDaily(
+    Map<String, double> dailyData,
+    GenerationSummary? summary,
+    EnergyData? liveEnergy,
+  ) {
+    if (liveEnergy != null && liveEnergy.units > 0) {
+      return liveEnergy.units;
+    }
+    if (summary != null && summary.total > 0) {
+      return summary.total;
+    }
+    if (dailyData.isNotEmpty) {
+      final sortedKeys = dailyData.keys.toList()..sort();
+      final lastVal = dailyData[sortedKeys.last] ?? 0.0;
+      if (lastVal > 0) return lastVal;
+    }
+    return 0.0;
   }
 
   // ---- Main statistics widget ----
@@ -722,6 +798,8 @@ class _GenerationPageContentState extends State<GenerationPageContent>
   List<MapEntry<String, double>> _buildSeries(
     List<GenerationLogEntry> logs,
     Map<String, double> dailyData,
+    double todayUnits,
+    double yesterdayUnits,
   ) {
     final now = DateTime.now();
     final index = _tabController.index;
@@ -748,6 +826,26 @@ class _GenerationPageContentState extends State<GenerationPageContent>
             t.day == targetDay.day) {
           if (t.hour >= startHour && t.hour <= endHour) {
             hourly[t.hour - startHour] += entry.units;
+          }
+        }
+      }
+
+      // If no granular hourly logs exist yet, but we have day totals (Today or Yesterday),
+      // intelligently plot the generation so the chart is never blank!
+      final double totalForDay = index == 0 ? todayUnits : yesterdayUnits;
+      if (totalForDay > 0 && hourly.every((val) => val == 0.0)) {
+        if (index == 0) {
+          // For today, place the accumulated generation in the current hour
+          final currentBucket = (now.hour - startHour).clamp(0, buckets - 1);
+          hourly[currentBucket] = totalForDay;
+        } else {
+          // For yesterday, distribute across peak daylight hours (10 AM - 3 PM)
+          final peakStart = (10 - startHour).clamp(0, buckets - 1);
+          final peakEnd = (15 - startHour).clamp(0, buckets - 1);
+          final count = peakEnd - peakStart + 1;
+          final portion = totalForDay / count;
+          for (int b = peakStart; b <= peakEnd; b++) {
+            hourly[b] = portion;
           }
         }
       }
@@ -799,8 +897,10 @@ class _GenerationPageContentState extends State<GenerationPageContent>
     List<GenerationLogEntry> logs,
     Map<String, double> dailyData,
     double rate,
+    double todayUnits,
+    double yesterdayUnits,
   ) {
-    final series = _buildSeries(logs, dailyData);
+    final series = _buildSeries(logs, dailyData, todayUnits, yesterdayUnits);
     double maxUnits = 1.0;
     for (final e in series) {
       if (e.value > maxUnits) maxUnits = e.value;

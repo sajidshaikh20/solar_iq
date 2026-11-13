@@ -29,7 +29,8 @@ class HomePageContent extends StatelessWidget {
         children: [
           _buildWelcomeHeader(),
           _buildTotalSavingsCard(fbService),
-        //  _buildDynamicSavingsCards(fbService),
+          const SizedBox(height: 14),
+          _buildDynamicSavingsCards(fbService),
           const SizedBox(height: 24),
           Text(
             'Quick Actions & Tools',

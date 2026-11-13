@@ -23,25 +23,53 @@ class FirebaseService {
 
   String? get currentUid => _auth.currentUser?.uid;
 
+  Stream<GenerationSummary>? _cachedSummaryStream;
+  String? _cachedSummaryUid;
+
+  Stream<Map<String, double>>? _cachedDailyStream;
+  String? _cachedDailyUid;
+
+  Stream<double>? _cachedRateStream;
+  String? _cachedRateUid;
+
   FirebaseService._internal() {
     _initEnergySync();
   }
 
   void _initEnergySync() {
-    _rootRef.child('energy').onValue.listen((event) {
-      final data = event.snapshot.value;
+    void handleEnergyData(dynamic data) {
       if (data == null) return;
       try {
         final energy = EnergyData.fromMap(Map<dynamic, dynamic>.from(data as Map));
-        final now = DateTime.now();
-        final bool isToday = energy.timestamp.year == now.year &&
-            energy.timestamp.month == now.month &&
-            energy.timestamp.day == now.day;
-        if (energy.units > 0 && isToday) {
+        if (energy.units > 0) {
           updateDailyReading(energy.units);
         }
       } catch (e) {
         dev.log('[GEN-FB] Error in energy sync: $e', name: 'FirebaseService');
+      }
+    }
+
+    _rootRef.child('energy').onValue.listen((event) {
+      handleEnergyData(event.snapshot.value);
+    });
+
+    // Also trigger on auth state change so when user logs in, we sync current energy reading
+    _auth.authStateChanges().listen((user) {
+      _cachedSummaryStream = null;
+      _cachedSummaryUid = null;
+      _cachedDailyStream = null;
+      _cachedDailyUid = null;
+      _cachedRateStream = null;
+      _cachedRateUid = null;
+
+      if (user != null) {
+        _rootRef.child('energy').get().then((snapshot) {
+          if (snapshot.exists) {
+            handleEnergyData(snapshot.value);
+          }
+        }).catchError((e) {
+          dev.log('[GEN-FB] Error fetching energy on auth change: $e', name: 'FirebaseService');
+        });
       }
     });
   }
@@ -86,11 +114,36 @@ class FirebaseService {
 
   Stream<GenerationSummary> getGenerationSummaryStream() {
     final uid = currentUid ?? 'anonymous';
-    return _dbRef.child('generation').child('summaries').child(uid).onValue.map((event) {
-      final data = event.snapshot.value;
-      if (data == null) return GenerationSummary();
+    if (_cachedSummaryStream != null && _cachedSummaryUid == uid) {
+      return _cachedSummaryStream!;
+    }
+    _cachedSummaryUid = uid;
+    _cachedSummaryStream = _buildGenerationSummaryStream(uid).asBroadcastStream();
+    return _cachedSummaryStream!;
+  }
 
-      GenerationSummary summary = GenerationSummary.fromMap(data as Map);
+  Stream<GenerationSummary> _buildGenerationSummaryStream(String uid) {
+    return _dbRef.child('generation').child('summaries').onValue.map((event) {
+      final raw = event.snapshot.value;
+      if (raw == null || raw is! Map) return GenerationSummary();
+
+      Map? targetData;
+      if (raw.containsKey('today') || raw.containsKey('total')) {
+        targetData = raw;
+      } else if (raw.containsKey(uid) && raw[uid] is Map) {
+        targetData = raw[uid] as Map;
+      } else {
+        // Fallback to whichever node has summary data
+        for (final val in raw.values) {
+          if (val is Map && (val.containsKey('today') || val.containsKey('total'))) {
+            targetData = val;
+            break;
+          }
+        }
+      }
+
+      if (targetData == null) return GenerationSummary();
+      GenerationSummary summary = GenerationSummary.fromMap(targetData);
 
       // --- Virtual & Database Rollover ---
       if (summary.lastUpdate == null) {
@@ -105,15 +158,21 @@ class FirebaseService {
           now.day != last.day;
 
       if (!isNewDay) {
-        // If stored summary.today contains cumulative meter reading (includes yesterday), normalize it
+        // If stored summary.today contains cumulative meter reading (e.g. 253.94), normalize it
         double normalizedToday = summary.today;
-        if (summary.yesterday > 0 && summary.today >= summary.yesterday) {
+        if (summary.total > 35.0 && (summary.today >= summary.total || summary.today > 35.0)) {
+          normalizedToday = 0.0;
+        } else if (summary.yesterday > 0 && summary.today >= summary.yesterday) {
           normalizedToday = summary.today - summary.yesterday;
+        }
+        double normalizedMonth = summary.thisMonth;
+        if (summary.total > 35.0 && summary.thisMonth >= summary.total && normalizedToday <= 0) {
+          normalizedMonth = 0.0;
         }
         return GenerationSummary(
           today: normalizedToday,
           yesterday: summary.yesterday,
-          thisMonth: summary.thisMonth,
+          thisMonth: normalizedMonth,
           total: summary.total,
           lastUpdate: summary.lastUpdate,
         );
@@ -126,12 +185,13 @@ class FirebaseService {
               last.month == yesterdayDate.month &&
               last.day == yesterdayDate.day;
 
-      final double yesterdayVal =
-          wasLastUpdateYesterday ? summary.today : summary.yesterday;
+      final double rawYesterday = wasLastUpdateYesterday ? summary.today : summary.yesterday;
+      final double yesterdayVal = (summary.total > 35.0 && rawYesterday >= summary.total) ? 0.0 : rawYesterday;
 
       final bool isSameMonth =
           now.year == last.year && now.month == last.month;
-      final double thisMonthVal = isSameMonth ? summary.thisMonth : 0.0;
+      final double rawMonth = isSameMonth ? summary.thisMonth : 0.0;
+      final double thisMonthVal = (summary.total > 35.0 && rawMonth >= summary.total) ? 0.0 : rawMonth;
 
       final updatedSummary = GenerationSummary(
         today: 0.0,
@@ -272,89 +332,110 @@ class FirebaseService {
   /// Default is the most recent 500 entries which comfortably covers a month.
   Stream<List<GenerationLogEntry>> getLogsStream({int limit = 500}) {
     final uid = currentUid ?? 'anonymous';
-    final path = 'solar_app/generation/logs/$uid';
+    const path = 'solar_app/generation/logs';
     dev.log('[GEN-FB] subscribing to $path (limitToLast=$limit)',
         name: 'FirebaseService');
     return _dbRef
         .child('generation')
         .child('logs')
-        .child(uid)
         .limitToLast(limit)
         .onValue
         .map((event) {
       final raw = event.snapshot.value;
-      dev.log(
-        '[GEN-FB] snapshot @ $path '
-        'exists=${event.snapshot.exists} '
-        'type=${raw.runtimeType} '
-        'value=${raw.toString().substring(0, raw.toString().length.clamp(0, 400))}',
-        name: 'FirebaseService',
-      );
-      if (raw == null) {
-        dev.log('[GEN-FB] no data at $path -> returning empty list',
-            name: 'FirebaseService');
-        return <GenerationLogEntry>[];
-      }
-      if (raw is! Map) {
-        dev.log(
-          '[GEN-FB] WARNING: data at $path is not a Map (was ${raw.runtimeType}); '
-          'check Firebase schema',
-          name: 'FirebaseService',
-        );
+      if (raw == null || raw is! Map) {
         return <GenerationLogEntry>[];
       }
 
-      final entries = raw.entries.map((e) {
-        return GenerationLogEntry.fromMap(
-            e.key.toString(), e.value as Map);
-      }).toList();
+      Map logsMap = raw;
+      if (raw.containsKey(uid) && raw[uid] is Map) {
+        logsMap = raw[uid] as Map;
+      } else if (!raw.values.any((v) => v is Map && (v.containsKey('units') || v.containsKey('timestamp')))) {
+        for (final val in raw.values) {
+          if (val is Map && val.values.any((item) => item is Map && (item.containsKey('units') || item.containsKey('timestamp')))) {
+            logsMap = val;
+            break;
+          }
+        }
+      }
+
+      final entries = <GenerationLogEntry>[];
+      logsMap.forEach((key, val) {
+        if (val is Map) {
+          entries.add(GenerationLogEntry.fromMap(key.toString(), val));
+        }
+      });
 
       // Sort by timestamp ascending so callers can bucket chronologically.
       entries.sort((a, b) => a.timestamp.compareTo(b.timestamp));
-
-      // Concise summary log
-      final first = entries.isNotEmpty ? entries.first.timestamp : null;
-      final last = entries.isNotEmpty ? entries.last.timestamp : null;
-      final totalUnits =
-          entries.fold<double>(0, (acc, e) => acc + e.units);
-      dev.log(
-        '[GEN-FB] parsed ${entries.length} entries '
-        'firstTs=$first lastTs=$last totalUnits=$totalUnits',
-        name: 'FirebaseService',
-      );
       return entries;
     });
   }
 
   Stream<Map<String, double>> getDailyGenerationStream() {
     final uid = currentUid ?? 'anonymous';
-    final path = 'solar_app/generation/daily/$uid';
+    if (_cachedDailyStream != null && _cachedDailyUid == uid) {
+      return _cachedDailyStream!;
+    }
+    _cachedDailyUid = uid;
+    _cachedDailyStream = _buildDailyGenerationStream(uid).asBroadcastStream();
+    return _cachedDailyStream!;
+  }
+
+  Stream<Map<String, double>> _buildDailyGenerationStream(String uid) {
+    const path = 'solar_app/generation/daily';
     dev.log('[GEN-FB] subscribing to daily generation path: $path',
         name: 'FirebaseService');
     return _dbRef
         .child('generation')
         .child('daily')
-        .child(uid)
         .onValue
         .map((event) {
       final raw = event.snapshot.value;
-      if (raw == null) {
-        return <String, double>{};
-      }
-      if (raw is! Map) {
-        dev.log('[GEN-FB] WARNING: daily path is not a Map: $raw',
-            name: 'FirebaseService');
+      if (raw == null || raw is! Map) {
         return <String, double>{};
       }
 
       final Map<String, double> result = {};
+      bool hasDirectDateKeys = false;
+
+      // 1. Check if dates are directly under daily (single box shared)
       raw.forEach((key, value) {
-        if (value is num) {
-          result[key.toString()] = value.toDouble();
-        } else if (value != null) {
-          result[key.toString()] = double.tryParse(value.toString()) ?? 0.0;
+        if (key.toString().contains('-') && value is! Map) {
+          hasDirectDateKeys = true;
+          if (value is num) {
+            result[key.toString()] = value.toDouble();
+          } else if (value != null) {
+            result[key.toString()] = double.tryParse(value.toString()) ?? 0.0;
+          }
         }
       });
+
+      // 2. If dates are nested under UID nodes, extract from current UID or primary node
+      if (!hasDirectDateKeys) {
+        Map? userNode;
+        if (raw.containsKey(uid) && raw[uid] is Map) {
+          userNode = raw[uid] as Map;
+        } else {
+          int maxEntries = 0;
+          raw.forEach((k, v) {
+            if (v is Map && v.length > maxEntries) {
+              maxEntries = v.length;
+              userNode = v;
+            }
+          });
+        }
+
+        if (userNode is Map) {
+          (userNode as Map).forEach((key, value) {
+            if (value is num) {
+              result[key.toString()] = value.toDouble();
+            } else if (value != null) {
+              result[key.toString()] = double.tryParse(value.toString()) ?? 0.0;
+            }
+          });
+        }
+      }
+
       return result;
     });
   }
@@ -371,105 +452,139 @@ class FirebaseService {
 
   Future<void> updateDailyReading(double rawUnits) async {
     final uid = currentUid;
-    if (uid == null) return;
+    if (rawUnits <= 0) return;
     final now = DateTime.now();
     final dateStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayStr = '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
+
     try {
-      final summaryRef = _dbRef.child('generation').child('summaries').child(uid);
-      double calculatedTodayUnits = rawUnits;
+      // 1. Fetch current daily data to calculate deltas
+      final dailySnapshot = await _dbRef.child('generation').child('daily').get();
+      Map<String, double> dailyMap = {};
+      if (dailySnapshot.exists && dailySnapshot.value is Map) {
+        final rawDaily = dailySnapshot.value as Map;
+        rawDaily.forEach((k, v) {
+          if (k.toString().contains('-') && v is! Map) {
+            final d = double.tryParse(v.toString());
+            if (d != null && d > 0) dailyMap[k.toString()] = d;
+          } else if (v is Map) {
+            v.forEach((dk, dv) {
+              if (dk.toString().contains('-')) {
+                final d = double.tryParse(dv.toString());
+                if (d != null && d > 0) dailyMap[dk.toString()] = d;
+              }
+            });
+          }
+        });
+      }
 
-      await summaryRef.runTransaction((Object? post) {
-        if (post == null) {
-          calculatedTodayUnits = rawUnits;
-          return Transaction.success(GenerationSummary(
-            today: rawUnits,
-            yesterday: 0.0,
-            thisMonth: rawUnits,
-            total: rawUnits,
-            lastUpdate: now,
-          ).toMap());
+
+      // Store current meter reading for today
+      dailyMap[dateStr] = rawUnits;
+      await _dbRef.child('generation').child('daily').child(dateStr).set(rawUnits);
+      if (uid != null && uid != 'anonymous') {
+        await _dbRef.child('generation').child('daily').child(uid).child(dateStr).set(rawUnits);
+      }
+
+      final sortedDates = dailyMap.keys.toList()..sort();
+      double todayUnits = 0.0;
+      double yesterdayUnits = 0.0;
+      double thisMonthUnits = 0.0;
+
+      // FORMULA 1: Today's Generation = Current Meter - Yesterday's End Meter
+      if (dailyMap.containsKey(yesterdayStr)) {
+        final yVal = dailyMap[yesterdayStr] ?? 0.0;
+        if (rawUnits >= yVal && yVal > 0) {
+          todayUnits = rawUnits - yVal;
         }
+      } else {
+        final todayIndex = sortedDates.indexOf(dateStr);
+        if (todayIndex > 0) {
+          final prevDate = sortedDates[todayIndex - 1];
+          final prevVal = dailyMap[prevDate] ?? 0.0;
+          if (rawUnits >= prevVal && prevVal > 0) {
+            todayUnits = rawUnits - prevVal;
+          }
+        }
+      }
+      if (todayUnits <= 0 && rawUnits <= 35.0) {
+        todayUnits = rawUnits;
+      }
 
-        final data = Map<String, dynamic>.from(post as Map);
-        final lastUpdateStr = data['lastUpdate'] as String?;
-        DateTime? lastUpdate = lastUpdateStr != null ? DateTime.tryParse(lastUpdateStr) : null;
+      // FORMULA 2: Yesterday's Generation = Yesterday's Meter - Day Before Yesterday's Meter
+      if (dailyMap.containsKey(yesterdayStr)) {
+        final yIndex = sortedDates.indexOf(yesterdayStr);
+        if (yIndex > 0) {
+          final beforeYesterday = sortedDates[yIndex - 1];
+          final beforeVal = dailyMap[beforeYesterday] ?? 0.0;
+          final yVal = dailyMap[yesterdayStr] ?? 0.0;
+          if (yVal >= beforeVal && beforeVal > 0) {
+            yesterdayUnits = yVal - beforeVal;
+          }
+        }
+      }
 
-        double prevToday = (data['today'] ?? 0.0).toDouble();
-        double yesterday = (data['yesterday'] ?? 0.0).toDouble();
-        double thisMonth = (data['thisMonth'] ?? 0.0).toDouble();
-        double total = (data['total'] ?? 0.0).toDouble();
-        double cumulativeBaseline = (data['cumulativeBaseline'] ?? 0.0).toDouble();
-
-        double todayUnits = rawUnits;
-
-        if (lastUpdate != null) {
-          bool isNewDay = now.year != lastUpdate.year ||
-              now.month != lastUpdate.month ||
-              now.day != lastUpdate.day;
-
-          bool isNewMonth = now.year != lastUpdate.year ||
-              now.month != lastUpdate.month;
-
-          if (isNewDay) {
-            DateTime yesterdayDate = now.subtract(const Duration(days: 1));
-            bool wasLastUpdateYesterday = lastUpdate.year == yesterdayDate.year &&
-                lastUpdate.month == yesterdayDate.month &&
-                lastUpdate.day == yesterdayDate.day;
-
-            yesterday = wasLastUpdateYesterday ? prevToday : yesterday;
-
-            // If rawUnits includes yesterday's total, update baseline
-            if (rawUnits >= prevToday && prevToday > 0) {
-              cumulativeBaseline = (cumulativeBaseline > 0) ? (cumulativeBaseline + prevToday) : prevToday;
-            } else {
-              cumulativeBaseline = 0.0;
-            }
-
-            if (cumulativeBaseline > 0 && rawUnits >= cumulativeBaseline) {
-              todayUnits = rawUnits - cumulativeBaseline;
-            } else {
-              todayUnits = rawUnits;
-            }
-
-            double delta = todayUnits;
-            thisMonth = isNewMonth ? todayUnits : (thisMonth + delta);
-            total += delta;
-          } else {
-            if (cumulativeBaseline > 0 && rawUnits >= cumulativeBaseline) {
-              todayUnits = rawUnits - cumulativeBaseline;
-            } else {
-              todayUnits = rawUnits;
-            }
-
-            double delta = todayUnits - prevToday;
-            if (delta > 0) {
-              thisMonth += delta;
-              total += delta;
+      // FORMULA 3: This Month Generation = Current Meter - Meter Reading at End of Last Month
+      double lastMonthEndVal = 0.0;
+      for (final d in sortedDates.reversed) {
+        final parts = d.split('-');
+        if (parts.length == 3) {
+          final y = int.tryParse(parts[0]) ?? 0;
+          final m = int.tryParse(parts[1]) ?? 0;
+          final day = int.tryParse(parts[2]) ?? 0;
+          final dt = DateTime(y, m, day);
+          if (dt.isBefore(DateTime(now.year, now.month, 1))) {
+            lastMonthEndVal = dailyMap[d] ?? 0.0;
+            break;
+          }
+        }
+      }
+      if (lastMonthEndVal > 0 && rawUnits >= lastMonthEndVal) {
+        thisMonthUnits = rawUnits - lastMonthEndVal;
+      } else {
+        // Sum of all daily generation in current month
+        double monthSum = 0.0;
+        for (int i = 1; i < sortedDates.length; i++) {
+          final d = sortedDates[i];
+          final parts = d.split('-');
+          if (parts.length == 3) {
+            final y = int.tryParse(parts[0]) ?? 0;
+            final m = int.tryParse(parts[1]) ?? 0;
+            if (y == now.year && m == now.month) {
+              final prevVal = dailyMap[sortedDates[i - 1]] ?? 0.0;
+              final currVal = dailyMap[d] ?? 0.0;
+              if (currVal >= prevVal) monthSum += (currVal - prevVal);
             }
           }
-        } else {
-          todayUnits = rawUnits;
-          thisMonth = rawUnits;
-          total += rawUnits;
         }
+        thisMonthUnits = monthSum > 0 ? monthSum : todayUnits;
+      }
 
-        calculatedTodayUnits = todayUnits;
+      final summaryMap = GenerationSummary(
+        today: todayUnits,
+        yesterday: yesterdayUnits,
+        thisMonth: thisMonthUnits,
+        total: rawUnits,
+        lastUpdate: now,
+      ).toMap();
 
-        final summaryMap = GenerationSummary(
-          today: todayUnits,
-          yesterday: yesterday,
-          thisMonth: thisMonth,
-          total: total,
-          lastUpdate: now,
-        ).toMap();
+      // Save summary at root summaries AND summaries/$uid
+      await _dbRef.child('generation').child('summaries').set(summaryMap);
+      if (uid != null && uid != 'anonymous') {
+        await _dbRef.child('generation').child('summaries').child(uid).set(summaryMap);
+      }
 
-        summaryMap['cumulativeBaseline'] = cumulativeBaseline;
-
-        return Transaction.success(summaryMap);
-      });
-
-      // Save calculated today's generation to daily node
-      await _dbRef.child('generation').child('daily').child(uid).child(dateStr).set(calculatedTodayUnits);
+      // 3. Automatically log hourly bucket for graphs (root AND $uid)
+      final hourKey = '${dateStr}_H${now.hour.toString().padLeft(2, '0')}';
+      final logData = {
+        'units': todayUnits,
+        'timestamp': now.toIso8601String(),
+      };
+      await _dbRef.child('generation').child('logs').child(hourKey).set(logData);
+      if (uid != null && uid != 'anonymous') {
+        await _dbRef.child('generation').child('logs').child(uid).child(hourKey).set(logData);
+      }
     } catch (e) {
       dev.log('[GEN-FB] Error saving daily reading: $e', name: 'FirebaseService');
     }
@@ -587,13 +702,21 @@ class FirebaseService {
 
   // --- Settings ---
 
-  Stream<double> getElectricityRateStream() async* {
+  Stream<double> getElectricityRateStream() {
     final uid = currentUid ?? 'anonymous';
+    if (_cachedRateStream != null && _cachedRateUid == uid) {
+      return _cachedRateStream!;
+    }
+    _cachedRateUid = uid;
+    _cachedRateStream = _buildElectricityRateStream(uid).asBroadcastStream();
+    return _cachedRateStream!;
+  }
+
+  Stream<double> _buildElectricityRateStream(String uid) async* {
     yield 8.0; // Emit default rate immediately
     try {
       final stream = _dbRef
           .child('settings')
-          .child(uid)
           .child('electricity_rate')
           .onValue
           .map((event) {
@@ -601,10 +724,12 @@ class FirebaseService {
         if (val == null) return 8.0;
         if (val is num) return val.toDouble();
         return double.tryParse(val.toString()) ?? 8.0;
+      }).handleError((error) {
+        return 8.0;
       });
       yield* stream;
-    } catch (error) {
-      dev.log('[GEN-FB] Electricity rate stream error (using default 8.0): $error', name: 'FirebaseService');
+    } catch (_) {
+      yield 8.0;
     }
   }
 
@@ -613,9 +738,15 @@ class FirebaseService {
     try {
       await _dbRef
           .child('settings')
-          .child(uid)
           .child('electricity_rate')
           .set(rate);
+      if (uid != 'anonymous') {
+        await _dbRef
+            .child('settings')
+            .child(uid)
+            .child('electricity_rate')
+            .set(rate);
+      }
       return ApiResponse.success(null);
     } catch (e) {
       return ApiResponse.error(e.toString());
